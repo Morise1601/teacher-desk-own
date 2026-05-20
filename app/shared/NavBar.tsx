@@ -338,7 +338,7 @@ export default function Navbar() {
                                         <Link href="/settings" onClick={() => setIsOpen(false)} className='text-gray-400 hover:text-[var(--color-primary)] transition-colors'>
                                             <IoSettingsOutline className='text-xl' />
                                         </Link>
-                                        <button onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login'; }} className='text-gray-400 hover:text-red-500 transition-colors'>
+                                        <button onClick={async () => { await supabase.auth.signOut(); window.location.href = '/'; }} className='text-gray-400 hover:text-red-500 transition-colors'>
                                             <HiX className='text-xl' />
                                         </button>
                                     </div>
