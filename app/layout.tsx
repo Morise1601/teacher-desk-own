@@ -7,6 +7,7 @@ import MessagePopupWrapper from "@/app/shared/MessagePopupWrapper";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import MaintenanceGuard from "@/app/shared/MaintenanceGuard";
+import AuthGuard from "@/app/shared/AuthGuard";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,7 +45,9 @@ export default function RootLayout({
         <MessagePopupWrapper />
         <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} closeOnClick pauseOnHover draggable />
         <MaintenanceGuard>
-          {children}
+          <AuthGuard>
+            {children}
+          </AuthGuard>
         </MaintenanceGuard>
       </body>
     </html>

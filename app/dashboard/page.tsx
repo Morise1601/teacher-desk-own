@@ -35,7 +35,13 @@ const DashboardPage = () => {
         let isSubscribed = true;
         const checkUser = async () => {
             const { data: { user } } = await supabase.auth.getUser();
-            if (!user || !isSubscribed) return;
+            if (!user) {
+                if (isSubscribed) {
+                    router.push('/');
+                }
+                return;
+            }
+            if (!isSubscribed) return;
 
             let finalRole = user.user_metadata?.role;
 
