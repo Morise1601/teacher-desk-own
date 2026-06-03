@@ -95,22 +95,21 @@ export default function SignInForm({ onSwitch }: Props) {
     try {
       const encryptedResponse = await getGoogleAuthSettingsAction();
       const response = decryptData(encryptedResponse);
-      
+
       if (!response || !response.success) {
         toast.error("Failed to load authentication settings.");
         setLoading(false);
         return;
       }
-      
+
       const settings = response.settings;
       if (settings.google_signin_enabled !== 'true') {
         toast.error("Google Sign-In is currently disabled by the administrator.");
         setLoading(false);
         return;
       }
-      
-      const callbackUrl = settings.google_callback_url || window.location.origin + '/auth/callback';
-      
+      console.log('Settings', settings)
+      const callbackUrl = window.location.origin + '/auth/callback';
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -121,7 +120,7 @@ export default function SignInForm({ onSwitch }: Props) {
           }
         }
       });
-      
+
       if (error) {
         toast.error(error.message || "Failed to initialize Google login.");
         setLoading(false);
