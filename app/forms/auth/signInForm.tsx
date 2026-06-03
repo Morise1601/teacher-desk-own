@@ -16,6 +16,7 @@ import { supabase } from "@/lib/supabase";
 import { getUserRoleAction } from '@/app/actions/auth';
 import { decryptData } from '@/lib/crypto';
 import { Button } from "@/components/ui/button";
+import { getGoogleAuthSettingsAction } from '@/app/actions/settings';
 
 type Props = {
   onSwitch: (form: AuthFormType) => void;
@@ -89,9 +90,48 @@ export default function SignInForm({ onSwitch }: Props) {
     }
   }
 
-  const googleSignIn = () => {
-    toast.info('Google SignIn coming soon!');
-  }
+  const googleSignIn = async () => {
+    setLoading(true);
+    try {
+      const encryptedResponse = await getGoogleAuthSettingsAction();
+      const response = decryptData(encryptedResponse);
+      
+      if (!response || !response.success) {
+        toast.error("Failed to load authentication settings.");
+        setLoading(false);
+        return;
+      }
+      
+      const settings = response.settings;
+      if (settings.google_signin_enabled !== 'true') {
+        toast.error("Google Sign-In is currently disabled by the administrator.");
+        setLoading(false);
+        return;
+      }
+      
+      const callbackUrl = settings.google_callback_url || window.location.origin + '/auth/callback';
+      
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: callbackUrl,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent'
+          }
+        }
+      });
+      
+      if (error) {
+        toast.error(error.message || "Failed to initialize Google login.");
+        setLoading(false);
+      }
+    } catch (err: any) {
+      console.error("Google login error:", err);
+      toast.error("Google single sign-on security error.");
+      setLoading(false);
+    }
+  };
 
   const linkedInSignIn = () => {
     toast.info('LinkedIn SignIn coming soon!');

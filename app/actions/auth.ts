@@ -173,3 +173,279 @@ export async function getAdminDashboardStatsAction() {
     return encryptData({ success: false, message: error?.message || "Unknown error" });
   }
 }
+
+/**
+ * SECURE ACTION: Check Google user existency, auto-link existing users, and return redirect path.
+ */
+export async function handleGoogleLoginAction(encryptedPayload: string) {
+  try {
+    const payload = decryptData(encryptedPayload);
+    if (!payload || !payload.email || !payload.authId) {
+      throw new Error("Invalid or untrusted callback payload.");
+    }
+
+    const { email, authId, fullName, profilePic, googleId } = payload;
+    const now = new Date().toISOString();
+
+    // 1. Check Super Admins table
+    const { data: adminData } = await supabaseAdmin
+      .from('super_admins')
+      .select('id, role_type')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (adminData) {
+      await supabaseAdmin
+        .from('super_admins')
+        .update({
+          auth_id: authId,
+          google_id: googleId || null,
+          auth_provider: 'google',
+          profile_picture: profilePic || null,
+          last_google_login_at: now
+        })
+        .eq('email', email);
+
+      console.log(`✅ [GOOGLE LOGIN LINK]: Linked existing Admin ${email} with auth_id ${authId}`);
+      return encryptData({
+        success: true,
+        exists: true,
+        role: adminData.role_type || 'super_admin',
+        redirectPath: '/dashboard/super-admin'
+      });
+    }
+
+    // 2. Check Teachers table
+    const { data: teacherData } = await supabaseAdmin
+      .from('teachers')
+      .select('id, role_type, is_active')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (teacherData) {
+      if (teacherData.is_active === false) {
+        return encryptData({ success: false, message: "Your account is currently inactive. Please contact support." });
+      }
+
+      await supabaseAdmin
+        .from('teachers')
+        .update({
+          auth_id: authId,
+          google_id: googleId || null,
+          auth_provider: 'google',
+          profile_image_url: profilePic || null,
+          email_verified: true,
+          last_google_login_at: now
+        })
+        .eq('email', email);
+
+      console.log(`✅ [GOOGLE LOGIN LINK]: Linked existing Teacher ${email} with auth_id ${authId}`);
+      return encryptData({
+        success: true,
+        exists: true,
+        role: teacherData.role_type || 'teacher',
+        redirectPath: '/dashboard'
+      });
+    }
+
+    // 3. Check Institutions table
+    const { data: instData } = await supabaseAdmin
+      .from('institutions')
+      .select('id, role_type, is_active')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (instData) {
+      if (instData.is_active === false) {
+        return encryptData({ success: false, message: "Your institution account is currently inactive. Please contact support." });
+      }
+
+      await supabaseAdmin
+        .from('institutions')
+        .update({
+          auth_id: authId,
+          google_id: googleId || null,
+          auth_provider: 'google',
+          profile_image_url: profilePic || null,
+          email_verified: true,
+          last_google_login_at: now
+        })
+        .eq('email', email);
+
+      console.log(`✅ [GOOGLE LOGIN LINK]: Linked existing Institution Admin ${email} with auth_id ${authId}`);
+      return encryptData({
+        success: true,
+        exists: true,
+        role: instData.role_type || 'institution_admin',
+        redirectPath: '/dashboard'
+      });
+    }
+
+    // 4. User does not exist (new user)
+    console.log(`ℹ️ [GOOGLE SIGNIN NEW]: New Google user detected: ${email}`);
+    return encryptData({
+      success: true,
+      exists: false
+    });
+  } catch (err: any) {
+    console.error("❌ [handleGoogleLoginAction Error]:", err.message);
+    return encryptData({ success: false, message: err.message });
+  }
+}
+
+/**
+ * SECURE ACTION: Register new Google user as Teacher.
+ */
+export async function registerGoogleTeacherAction(encryptedPayload: string) {
+  try {
+    const formData = decryptData(encryptedPayload);
+    if (!formData || !formData.email || !formData.authId) {
+      throw new Error("Invalid or untrusted registration payload.");
+    }
+
+    // Duplicate check
+    const [{ count: tCount }, { count: iCount }] = await Promise.all([
+      supabaseAdmin.from('teachers').select('email', { count: 'exact', head: true }).eq('email', formData.email),
+      supabaseAdmin.from('institutions').select('email', { count: 'exact', head: true }).eq('email', formData.email)
+    ]);
+
+    if ((tCount || 0) > 0 || (iCount || 0) > 0) {
+      return encryptData({ success: false, message: "This email is already registered. Please sign in instead." });
+    }
+
+    // Insert public record in public.teachers
+    const { error: dbError } = await supabaseAdmin
+      .from('teachers')
+      .insert([
+        {
+          full_name: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+          gender: formData.gender,
+          dob: formData.dob,
+          qualification: formData.qualification,
+          specialization: formData.specialization,
+          experience: formData.experience,
+          institution_id: formData.institutionId || null,
+          is_active: true,
+          is_deleted: false,
+          auth_id: formData.authId,
+          role_type: 'teacher',
+          refered_by: formData.referedBy || null,
+          google_id: formData.googleId || null,
+          auth_provider: 'google',
+          profile_image_url: formData.avatarUrl || null,
+          email_verified: true,
+          last_google_login_at: new Date().toISOString()
+        }
+      ]);
+
+    if (dbError) {
+      console.error("❌ [GOOGLE TEACHER DB ERROR]:", dbError.message);
+      return encryptData({ success: false, message: `Database error: ${dbError.message}` });
+    }
+
+    return encryptData({
+      success: true,
+      message: "Teacher account created successfully!"
+    });
+  } catch (err: any) {
+    console.error("❌ [registerGoogleTeacherAction Error]:", err.message);
+    return encryptData({ success: false, message: err.message });
+  }
+}
+
+/**
+ * SECURE ACTION: Register new Google user as Institution.
+ */
+export async function registerGoogleInstitutionAction(encryptedPayload: string) {
+  try {
+    const formData = decryptData(encryptedPayload);
+    if (!formData || !formData.email || !formData.authId) {
+      throw new Error("Invalid or untrusted registration payload.");
+    }
+
+    // Duplicate check
+    const [{ count: tCount }, { count: iCount }] = await Promise.all([
+      supabaseAdmin.from('teachers').select('email', { count: 'exact', head: true }).eq('email', formData.email),
+      supabaseAdmin.from('institutions').select('email', { count: 'exact', head: true }).eq('email', formData.email)
+    ]);
+
+    if ((tCount || 0) > 0 || (iCount || 0) > 0) {
+      return encryptData({ success: false, message: "This email is already registered. Please sign in instead." });
+    }
+
+    let recordData, dbError;
+    const now = new Date().toISOString();
+
+    if (formData.existingId) {
+      // Claiming an existing stub
+      const { data, error } = await supabaseAdmin
+        .from('institutions')
+        .update({
+          name: formData.name,
+          type: formData.type,
+          address: formData.address,
+          email: formData.email,
+          phone: formData.phone,
+          website: formData.website || null,
+          is_active: true,
+          auth_id: formData.authId,
+          role_type: 'institution_admin',
+          google_id: formData.googleId || null,
+          auth_provider: 'google',
+          profile_image_url: formData.avatarUrl || null,
+          email_verified: true,
+          last_google_login_at: now,
+          updated_at: now
+        })
+        .eq('id', formData.existingId)
+        .select()
+        .single();
+      recordData = data;
+      dbError = error;
+    } else {
+      // Direct insertion
+      const { data, error } = await supabaseAdmin
+        .from('institutions')
+        .insert([
+          {
+            name: formData.name,
+            type: formData.type,
+            address: formData.address,
+            email: formData.email,
+            phone: formData.phone,
+            website: formData.website || null,
+            is_active: true,
+            is_deleted: false,
+            hire_status: false,
+            auth_id: formData.authId,
+            role_type: 'institution_admin',
+            google_id: formData.googleId || null,
+            auth_provider: 'google',
+            profile_image_url: formData.avatarUrl || null,
+            email_verified: true,
+            last_google_login_at: now
+          }
+        ])
+        .select()
+        .single();
+      recordData = data;
+      dbError = error;
+    }
+
+    if (dbError) {
+      console.error("❌ [GOOGLE INSTITUTION DB ERROR]:", dbError.message);
+      return encryptData({ success: false, message: `Database error: ${dbError.message}` });
+    }
+
+    return encryptData({
+      success: true,
+      message: "Institution registered successfully!",
+      institutionId: recordData?.id
+    });
+  } catch (err: any) {
+    console.error("❌ [registerGoogleInstitutionAction Error]:", err.message);
+    return encryptData({ success: false, message: err.message });
+  }
+}
