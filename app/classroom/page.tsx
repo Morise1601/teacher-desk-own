@@ -35,7 +35,7 @@ function ClassroomContent() {
     useEffect(() => {
         const savedRoom = localStorage.getItem('activeMeetRoom');
         const savedIsOpen = localStorage.getItem('isMeetOpen') === 'true';
-        
+
         if (savedIsOpen && savedRoom) {
             setActiveRoom(savedRoom);
             setIsMeetOpen(true);

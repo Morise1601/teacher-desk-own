@@ -1,956 +1,1150 @@
+// app/jobs/page.tsx
+
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Navbar from '@/app/shared/NavBar';
-import { motion, AnimatePresence, Variants } from 'framer-motion';
+import Footer from '@/app/shared/Footer';
+import LoadingScreen from '@/components/ui/loading-screen';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
     FaSearch, FaMapMarkerAlt, FaBookmark, FaRegBookmark,
-    FaBriefcase, FaClock, FaRupeeSign, FaFilter,
-    FaChevronDown, FaChevronUp, FaTimes, FaGraduationCap,
-    FaStar, FaBell, FaArrowRight, FaChalkboardTeacher,
-    FaSchool, FaUserTie, FaCheckCircle, FaVideo,
-    FaFireAlt, FaChartBar, FaLightbulb, FaUpload,
-    FaCalendarCheck,
+    FaBriefcase, FaClock, FaRupeeSign, FaFilter, FaTimes,
+    FaPlus, FaUserEdit, FaBell, FaCheckCircle, FaUserTie,
+    FaEye, FaGlobe, FaBuilding, FaGraduationCap, FaPaperPlane,
+    FaArrowRight, FaSchool, FaChartLine
 } from 'react-icons/fa';
-import Footer from '@/app/shared/Footer';
-import { MdWork, MdVerified, MdLocationOn, MdTrendingUp } from 'react-icons/md';
+import { MdWork, MdVerified, MdLocationOn } from 'react-icons/md';
 import { HiLightningBolt } from 'react-icons/hi';
 import { IoMdTrendingUp } from 'react-icons/io';
-import { BiTargetLock } from 'react-icons/bi';
+import { toast } from 'react-toastify';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// Types and Repository
+import { Job, Application, Resume, TeacherSettings, InstitutionSettings } from './types';
+import { jobsRepository } from './jobsRepository';
+import { supabase } from '@/lib/supabase';
+import { getUserRoleAction } from '@/app/actions/auth';
+import { decryptData } from '@/lib/crypto';
 
-interface Job {
-    id: number;
-    title: string;
-    school: string;
-    schoolInitial: string;
-    schoolColor: string;
-    location: string;
-    state: string;
-    salary: string;
-    salaryMin: number;
-    experience: string;
-    subject: string;
-    qualification: string;
-    board: string;
-    jobType: string;
-    gradeLevel: string;
-    postedDate: string;
-    postedDaysAgo: number;
-    isVerified: boolean;
-    isFeatured: boolean;
-    rating: number;
-    applicants: number;
-    tags: string[];
-}
+// Components
+import ResumeUpload from './components/ResumeUpload';
+import JobCreatorModal from './components/JobCreatorModal';
+import ApplicantDetailsModal from './components/ApplicantDetailsModal';
+import AnalyticsPanel from './components/AnalyticsPanel';
+import NotificationCenter from './components/NotificationCenter';
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const allJobs: Job[] = [
-    {
-        id: 1, title: 'Senior Mathematics Teacher', school: 'Delhi Public School', schoolInitial: 'DPS',
-        schoolColor: 'var(--color-primary)', location: 'New Delhi', state: 'Delhi', salary: '₹45,000 – ₹65,000',
-        salaryMin: 45000, experience: '3–5 Years', subject: 'Mathematics',
-        qualification: 'M.Ed', board: 'CBSE', jobType: 'Full-time', gradeLevel: 'High School',
-        postedDate: '2 days ago', postedDaysAgo: 2, isVerified: true, isFeatured: true,
-        rating: 4.8, applicants: 38, tags: ['CBSE', 'Maths', 'Full-time'],
-    },
-    {
-        id: 2, title: 'Physics Teacher (PGT)', school: 'Ryan International School', schoolInitial: 'RIS',
-        schoolColor: 'var(--color-secondary)', location: 'Mumbai', state: 'Maharashtra', salary: '₹40,000 – ₹55,000',
-        salaryMin: 40000, experience: '1–3 Years', subject: 'Physics',
-        qualification: 'B.Ed', board: 'ICSE', jobType: 'Full-time', gradeLevel: 'High School',
-        postedDate: '1 day ago', postedDaysAgo: 1, isVerified: true, isFeatured: false,
-        rating: 4.5, applicants: 22, tags: ['ICSE', 'Physics', 'PGT'],
-    },
-    {
-        id: 3, title: 'English Language Teacher', school: 'Kendriya Vidyalaya', schoolInitial: 'KV',
-        schoolColor: '#b45309', location: 'Bangalore', state: 'Karnataka', salary: '₹30,000 – ₹45,000',
-        salaryMin: 30000, experience: 'Fresher', subject: 'English',
-        qualification: 'B.Ed', board: 'CBSE', jobType: 'Full-time', gradeLevel: 'Middle School',
-        postedDate: '3 days ago', postedDaysAgo: 3, isVerified: false, isFeatured: false,
-        rating: 4.2, applicants: 56, tags: ['CBSE', 'English', 'Fresher'],
-    },
-    {
-        id: 4, title: 'Computer Science Teacher', school: 'The Heritage School', schoolInitial: 'THS',
-        schoolColor: '#7c3aed', location: 'Kolkata', state: 'West Bengal', salary: '₹35,000 – ₹50,000',
-        salaryMin: 35000, experience: '1–3 Years', subject: 'Computer Science',
-        qualification: 'B.Ed', board: 'CBSE', jobType: 'Full-time', gradeLevel: 'High School',
-        postedDate: 'Today', postedDaysAgo: 0, isVerified: true, isFeatured: true,
-        rating: 4.6, applicants: 14, tags: ['CBSE', 'CS', 'Tech'],
-    },
-    {
-        id: 5, title: 'Biology Teacher (TGT)', school: "St. Xavier's High School", schoolInitial: 'SXS',
-        schoolColor: '#dc2626', location: 'Chennai', state: 'Tamil Nadu', salary: '₹28,000 – ₹40,000',
-        salaryMin: 28000, experience: 'Fresher', subject: 'Biology',
-        qualification: 'B.Ed', board: 'State Board', jobType: 'Full-time', gradeLevel: 'Middle School',
-        postedDate: '5 days ago', postedDaysAgo: 5, isVerified: false, isFeatured: false,
-        rating: 4.0, applicants: 31, tags: ['State Board', 'Biology', 'TGT'],
-    },
-    {
-        id: 6, title: 'Montessori Primary Teacher', school: 'Little Flowers Montessori', schoolInitial: 'LFM',
-        schoolColor: '#0891b2', location: 'Pune', state: 'Maharashtra', salary: '₹22,000 – ₹32,000',
-        salaryMin: 22000, experience: 'Fresher', subject: 'General',
-        qualification: 'Montessori', board: 'State Board', jobType: 'Full-time', gradeLevel: 'Primary',
-        postedDate: '1 week ago', postedDaysAgo: 7, isVerified: true, isFeatured: false,
-        rating: 4.7, applicants: 18, tags: ['Montessori', 'Primary', 'Full-time'],
-    },
-    {
-        id: 7, title: 'Chemistry Teacher (Part-time)', school: 'Amity International School', schoolInitial: 'AIS',
-        schoolColor: '#059669', location: 'Noida', state: 'Uttar Pradesh', salary: '₹20,000 – ₹30,000',
-        salaryMin: 20000, experience: '1–3 Years', subject: 'Chemistry',
-        qualification: 'M.Ed', board: 'CBSE', jobType: 'Part-time', gradeLevel: 'High School',
-        postedDate: '4 days ago', postedDaysAgo: 4, isVerified: true, isFeatured: false,
-        rating: 4.4, applicants: 9, tags: ['CBSE', 'Chemistry', 'Part-time'],
-    },
-    {
-        id: 8, title: 'Special Education Teacher', school: 'Bloom International School', schoolInitial: 'BIS',
-        schoolColor: '#e11d48', location: 'Hyderabad', state: 'Telangana', salary: '₹35,000 – ₹48,000',
-        salaryMin: 35000, experience: '3–5 Years', subject: 'Special Education',
-        qualification: 'M.Ed', board: 'CBSE', jobType: 'Full-time', gradeLevel: 'Primary',
-        postedDate: '6 days ago', postedDaysAgo: 6, isVerified: true, isFeatured: true,
-        rating: 4.9, applicants: 7, tags: ['Special Ed', 'CBSE', 'Full-time'],
-    },
-];
-
-// ─── Filter Options ────────────────────────────────────────────────────────────
-const subjectOptions = ['All Subjects', 'Mathematics', 'Physics', 'English', 'Biology', 'Chemistry', 'Computer Science', 'General', 'Special Education'];
-const boardOptions = ['All Boards', 'CBSE', 'ICSE', 'State Board'];
-const qualificationOptions = ['All Qualifications', 'B.Ed', 'M.Ed', 'PhD', 'NET/SET', 'Montessori'];
-const experienceOptions = ['Any Experience', 'Fresher', '1–3 Years', '3–5 Years', '5–10 Years', '10+ Years'];
-const salaryOptions = ['Any Salary', '₹10k–₹20k', '₹20k–₹40k', '₹40k–₹80k'];
-const jobTypeOptions = ['All Types', 'Full-time', 'Part-time', 'Contract', 'Internship', 'Remote'];
-const gradeLevelOptions = ['All Levels', 'Primary', 'Middle School', 'High School'];
+// Filter mapping
 const salaryRangeMap: Record<string, number> = { 'Any Salary': 0, '₹10k–₹20k': 10000, '₹20k–₹40k': 20000, '₹40k–₹80k': 40000 };
 
-// ─── Right Panel Data ─────────────────────────────────────────────────────────
-const trendingSearches = ['Mathematics CBSE', 'English Teacher', 'Primary Montessori', 'Physics PGT', 'Computer Science'];
-
-const topSchools = [
-    { name: 'Delhi Public School', jobs: 12, color: 'var(--color-primary)', initial: 'DPS' },
-    { name: 'Ryan International', jobs: 8, color: 'var(--color-secondary)', initial: 'RIS' },
-    { name: 'Kendriya Vidyalaya', jobs: 21, color: '#b45309', initial: 'KV' },
-    { name: 'Amity International', jobs: 6, color: '#059669', initial: 'AIS' },
-];
-
-const salaryInsights = [
-    { subject: 'Mathematics', avg: '₹48K', trend: '+12%', up: true },
-    { subject: 'Computer Science', avg: '₹52K', trend: '+18%', up: true },
-    { subject: 'Physics', avg: '₹42K', trend: '+8%', up: true },
-    { subject: 'English', avg: '₹36K', trend: '-3%', up: false },
-];
-
-const appliedJobs = [
-    { id: 1, title: 'Maths Teacher', school: 'DPS', status: 'Under Review', statusColor: 'bg-amber-100 text-amber-700' },
-    { id: 2, title: 'Physics PGT', school: 'RIS', status: 'Shortlisted', statusColor: 'bg-green-100 text-[var(--color-secondary)]' },
-    { id: 3, title: 'CS Teacher', school: 'THS', status: 'Interview Scheduled', statusColor: 'bg-blue-100 text-[var(--color-primary)]' },
-];
-
-const profileSteps = [
-    { label: 'Basic Info', done: true },
-    { label: 'Qualifications', done: true },
-    { label: 'Work Experience', done: true },
-    { label: 'Demo Video', done: false },
-    { label: 'Resume Upload', done: false },
-];
-
-// ─── Animation Variants ───────────────────────────────────────────────────────
-const fadeUp: Variants = {
-    hidden: { opacity: 0, y: 18 },
-    visible: (i = 0) => ({
-        opacity: 1, y: 0,
-        transition: { delay: i * 0.06, duration: 0.42, ease: 'easeOut' },
-    }),
-};
-
-// ─── Reusable Sub-components ─────────────────────────────────────────────────
-
-function FilterSection({ title, children, defaultOpen = true }: {
-    title: string; children: React.ReactNode; defaultOpen?: boolean;
-}) {
-    const [open, setOpen] = useState(defaultOpen);
-    return (
-        <div className="border-b border-gray-100 pb-3 mb-3 last:border-0 last:pb-0 last:mb-0">
-            <button
-                onClick={() => setOpen(o => !o)}
-                className="w-full flex items-center justify-between text-[13px] font-semibold text-[var(--color-primary)] mb-2"
-            >
-                {title}
-                {open ? <FaChevronUp className="text-[10px] opacity-50" /> : <FaChevronDown className="text-[10px] opacity-50" />}
-            </button>
-            <AnimatePresence initial={false}>
-                {open && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }}
-                        className="overflow-hidden"
-                    >
-                        {children}
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
-    );
-}
-
-function FilterChip({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
-    return (
-        <button
-            onClick={onClick}
-            className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-all duration-200 mb-1 ${selected
-                ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
-                : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]'
-                }`}
-        >
-            {label}
-        </button>
-    );
-}
-
-function RightPanelCard({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-    return (
-        <div className={`bg-white rounded-lg border border-gray-200 p-4 shadow-sm ${className}`}>
-            {children}
-        </div>
-    );
-}
-
-function RightPanelTitle({ icon, title }: { icon: React.ReactNode; title: string }) {
-    return (
-        <div className="flex items-center gap-2 mb-3">
-            <span className="text-[var(--color-primary)] text-sm">{icon}</span>
-            <h3 className="text-[13px] font-bold text-[var(--color-primary)]">{title}</h3>
-        </div>
-    );
-}
-
-function JobCard({ job, index, saved, onToggleSave }: {
-    job: Job; index: number; saved: boolean; onToggleSave: (id: number) => void;
-}) {
-    return (
-        <motion.div
-            variants={fadeUp} initial="hidden" animate="visible" custom={index}
-            whileHover={{ y: -2, boxShadow: '0 8px 28px rgba(20,60,100,0.11)' }}
-            transition={{ type: 'spring', stiffness: 280 }}
-            className={`bg-white rounded-lg border p-4 flex flex-col gap-3 cursor-pointer relative overflow-hidden ${job.isFeatured ? 'border-[var(--color-primary)]/25 shadow-sm' : 'border-gray-200'}`}
-        >
-            {job.isFeatured && (
-                <div className="absolute top-0 right-0">
-                    <div className="bg-gradient-to-l from-[var(--color-primary)] to-[#1e5a9a] text-white text-xs font-bold px-3 py-0.5 rounded-bl-xl tracking-widest capitalize">
-                        ⭐ Featured
-                    </div>
-                </div>
-            )}
-
-            {/* Header: Logo + Title + Bookmark */}
-            <div className="flex items-start gap-3">
-                <div
-                    className="w-11 h-11 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0 shadow-sm"
-                    style={{ backgroundColor: job.schoolColor }}
-                >
-                    {job.schoolInitial}
-                </div>
-                <div className="flex-1 min-w-0">
-                    <h3 className="text-[14px] font-semibold text-gray-800 leading-tight line-clamp-1">
-                        {job.title}
-                    </h3>
-                    <div className="flex items-center gap-1 mt-0.5">
-                        <span className="text-[12px] text-gray-500 font-medium truncate">{job.school}</span>
-                        {job.isVerified && <MdVerified className="text-[var(--color-primary)] text-[13px] flex-shrink-0" />}
-                    </div>
-                </div>
-                <button
-                    onClick={e => { e.stopPropagation(); onToggleSave(job.id); }}
-                    className="flex-shrink-0 mt-0.5 transition-transform hover:scale-110"
-                >
-                    {saved
-                        ? <FaBookmark className="text-[var(--color-secondary)] text-sm" />
-                        : <FaRegBookmark className="text-gray-300 hover:text-[var(--color-secondary)] text-sm transition-colors" />
-                    }
-                </button>
-            </div>
-
-            {/* Tags */}
-            <div className="flex flex-wrap gap-1.5">
-                {job.tags.map((tag, i) => (
-                    <span key={i} className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-[var(--color-primary)] border border-blue-100">
-                        {tag}
-                    </span>
-                ))}
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-50 text-[var(--color-secondary)] border border-green-100">
-                    {job.jobType}
-                </span>
-            </div>
-
-            {/* Meta grid */}
-            <div className="grid grid-cols-2 gap-x-2 gap-y-1">
-                <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                    <MdLocationOn className="text-[var(--color-secondary)] text-sm flex-shrink-0" />
-                    <span className="truncate">{job.location}</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                    <FaRupeeSign className="text-amber-500 text-xs flex-shrink-0" />
-                    <span className="truncate">{job.salary}</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                    <FaBriefcase className="text-[var(--color-primary)] text-xs flex-shrink-0" />
-                    <span>{job.experience}</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                    <FaGraduationCap className="text-purple-500 text-sm flex-shrink-0" />
-                    <span>{job.qualification}</span>
-                </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between pt-2 border-t border-gray-100 mt-auto">
-                <div className="flex items-center gap-2.5">
-                    <span className="flex items-center gap-1 text-xs text-gray-400">
-                        <FaClock className="text-xs" />{job.postedDate}
-                    </span>
-                    <span className="flex items-center gap-1 text-xs text-gray-400">
-                        <FaUserTie className="text-xs" />{job.applicants} applied
-                    </span>
-                    <span className="flex items-center gap-1 text-xs text-amber-500">
-                        <FaStar className="text-xs" />{job.rating}
-                    </span>
-                </div>
-                <button className="bg-[var(--color-primary)] hover:bg-[var(--color-secondary)] text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
-                    <HiLightningBolt className="text-xs" /> Apply
-                </button>
-            </div>
-        </motion.div>
-    );
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
-
 export default function JobsPage() {
+    // Current User Session Context
+    const DUMMY_TEACHER_ID = 'teacher-session-123';
+    const DUMMY_INSTITUTION_ID = 'institution-session-456';
+
+    const [userRole, setUserRole] = useState<string | null>(null);
+    const [roleLoading, setRoleLoading] = useState(true);
+
+    // View state
+    const [viewMode, setViewMode] = useState<'teacher' | 'institution'>('teacher');
+    const [jobs, setJobs] = useState<Job[]>([]);
+    const [applications, setApplications] = useState<Application[]>([]);
+    const [savedJobIds, setSavedJobIds] = useState<string[]>([]);
+    const [teacherSettings, setTeacherSettings] = useState<TeacherSettings | null>(null);
+    const [institutionSettings, setInstitutionSettings] = useState<InstitutionSettings | null>(null);
+    const [resumeData, setResumeData] = useState<Resume | null>(null);
+
+    // Active notifications indicator
+    const [showNotifications, setShowNotifications] = useState(false);
+    const [unreadNotifsCount, setUnreadNotifsCount] = useState(0);
+
+    // Modal Triggers
+    const [showJobCreator, setShowJobCreator] = useState(false);
+    const [editingJob, setEditingJob] = useState<Job | null>(null);
+    const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
+    const [applyingJob, setApplyingJob] = useState<Job | null>(null);
+
+    // Application Cover Letter Input
+    const [coverLetterInput, setCoverLetterInput] = useState('');
+
+    // Teacher Side: Search & Filter inputs
     const [searchQuery, setSearchQuery] = useState('');
     const [locationQuery, setLocationQuery] = useState('');
-    const [savedJobs, setSavedJobs] = useState<number[]>([]);
-    const [showMobileFilters, setShowMobileFilters] = useState(false);
-    const [activeTab, setActiveTab] = useState<'all' | 'saved' | 'recommended'>('all');
-    const [alertEmail, setAlertEmail] = useState('');
-    const [alertSet, setAlertSet] = useState(false);
-
-    // Filters
     const [filterSubject, setFilterSubject] = useState('All Subjects');
     const [filterBoard, setFilterBoard] = useState('All Boards');
-    const [filterQual, setFilterQual] = useState('All Qualifications');
     const [filterExp, setFilterExp] = useState('Any Experience');
     const [filterSalary, setFilterSalary] = useState('Any Salary');
     const [filterType, setFilterType] = useState('All Types');
     const [filterGrade, setFilterGrade] = useState('All Levels');
+    const [activeTab, setActiveTab] = useState<'all' | 'recommended' | 'saved' | 'applied'>('all');
 
+    // Institution Side: Tab filters
+    const [instTab, setInstTab] = useState<'active-postings' | 'applicants' | 'hiring-settings'>('active-postings');
+    const [applicantStatusFilter, setApplicantStatusFilter] = useState('All Statuses');
+    const [applicantExpFilter, setApplicantExpFilter] = useState('Any Experience');
+    const [applicantSubjectFilter, setApplicantSubjectFilter] = useState('All Subjects');
+
+    const loadData = async () => {
+        try {
+            const allJobs = await jobsRepository.getJobs();
+            setJobs(allJobs);
+            const allApps = await jobsRepository.getApplications();
+            setApplications(allApps);
+            const savedList = await jobsRepository.getSavedJobsList(DUMMY_TEACHER_ID);
+            setSavedJobIds(savedList);
+            const tSettings = await jobsRepository.getTeacherSettings(DUMMY_TEACHER_ID);
+            setTeacherSettings(tSettings);
+            const instSettings = await jobsRepository.getInstitutionSettings(DUMMY_INSTITUTION_ID);
+            setInstitutionSettings(instSettings);
+            const resume = await jobsRepository.getResume(DUMMY_TEACHER_ID);
+            setResumeData(resume);
+        } catch (err) {
+            console.error('Failed to load repository data', err);
+        }
+    };
+
+    useEffect(() => {
+        const fetchRoleAndLoad = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    let role = user.user_metadata?.role;
+                    if (!role) {
+                        const enc = await getUserRoleAction(user.id);
+                        const dec = decryptData(enc);
+                        if (dec && dec.success) role = dec.role;
+                    }
+                    setUserRole(role || 'teacher');
+                    if (role === 'institution' || role === 'institution_admin') {
+                        setViewMode('institution');
+                    } else {
+                        setViewMode('teacher');
+                    }
+                }
+            } catch (err) {
+                console.error("Error fetching user role on jobs page:", err);
+            } finally {
+                setRoleLoading(false);
+            }
+        };
+
+        fetchRoleAndLoad();
+        loadData();
+
+        // Listen for internal job updates triggered on this tab
+        const handleReload = () => {
+            loadData();
+        };
+        window.addEventListener('jobs:updated', handleReload);
+
+        // Listen for local storage changes from other tabs/windows (realtime sync)
+        const handleStorageChange = (e: StorageEvent) => {
+            const keysToSync = [
+                'td_jobs_list',
+                'td_applications_list',
+                'td_saved_jobs',
+                'td_teacher_settings',
+                'td_institution_settings',
+                'td_resumes_list',
+                'td_notifications_list',
+                'td_logs_list'
+            ];
+            if (e.key && keysToSync.includes(e.key)) {
+                loadData();
+            }
+        };
+        window.addEventListener('storage', handleStorageChange);
+
+        return () => {
+            window.removeEventListener('jobs:updated', handleReload);
+            window.removeEventListener('storage', handleStorageChange);
+        };
+    }, []);
+
+    // Filter counts calculation
     const activeFilterCount = [
         filterSubject !== 'All Subjects', filterBoard !== 'All Boards',
-        filterQual !== 'All Qualifications', filterExp !== 'Any Experience',
-        filterSalary !== 'Any Salary', filterType !== 'All Types',
-        filterGrade !== 'All Levels',
+        filterExp !== 'Any Experience', filterSalary !== 'Any Salary',
+        filterType !== 'All Types', filterGrade !== 'All Levels',
     ].filter(Boolean).length;
 
     const resetFilters = () => {
         setFilterSubject('All Subjects'); setFilterBoard('All Boards');
-        setFilterQual('All Qualifications'); setFilterExp('Any Experience');
-        setFilterSalary('Any Salary'); setFilterType('All Types');
-        setFilterGrade('All Levels');
+        setFilterExp('Any Experience'); setFilterSalary('Any Salary');
+        setFilterType('All Types'); setFilterGrade('All Levels');
     };
 
-    const toggleSave = (id: number) =>
-        setSavedJobs(prev => prev.includes(id) ? prev.filter(j => j !== id) : [...prev, id]);
-
+    // Filter jobs for teacher side
     const filteredJobs = useMemo(() => {
-        let jobs = allJobs;
-        if (activeTab === 'saved') jobs = jobs.filter(j => savedJobs.includes(j.id));
-        if (activeTab === 'recommended') jobs = jobs.filter(j => j.isFeatured || j.rating >= 4.5);
-        if (searchQuery) jobs = jobs.filter(j =>
-            j.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            j.school.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            j.subject.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-        if (locationQuery) jobs = jobs.filter(j =>
-            j.location.toLowerCase().includes(locationQuery.toLowerCase()) ||
-            j.state.toLowerCase().includes(locationQuery.toLowerCase())
-        );
-        if (filterSubject !== 'All Subjects') jobs = jobs.filter(j => j.subject === filterSubject);
-        if (filterBoard !== 'All Boards') jobs = jobs.filter(j => j.board === filterBoard);
-        if (filterQual !== 'All Qualifications') jobs = jobs.filter(j => j.qualification === filterQual);
-        if (filterExp !== 'Any Experience') jobs = jobs.filter(j => j.experience === filterExp);
-        if (filterType !== 'All Types') jobs = jobs.filter(j => j.jobType === filterType);
-        if (filterGrade !== 'All Levels') jobs = jobs.filter(j => j.gradeLevel === filterGrade);
-        if (filterSalary !== 'Any Salary') {
-            const minSal = salaryRangeMap[filterSalary];
-            jobs = jobs.filter(j => j.salaryMin >= minSal);
+        let list = jobs;
+
+        // Tab Filters
+        if (activeTab === 'saved') {
+            list = list.filter(j => savedJobIds.includes(j.id));
+        } else if (activeTab === 'applied') {
+            const appliedIds = applications.filter(a => a.teacherId === DUMMY_TEACHER_ID).map(a => a.jobId);
+            list = list.filter(j => appliedIds.includes(j.id));
+        } else if (activeTab === 'recommended') {
+            // Sort by match score
+            if (teacherSettings) {
+                return list.map(job => {
+                    const match = calculateMatchScore(job, teacherSettings);
+                    return { ...job, matchScore: match.score };
+                })
+                    .filter(j => j.matchScore >= 60)
+                    .sort((a, b) => b.matchScore - a.matchScore);
+            }
         }
-        return jobs;
-    }, [searchQuery, locationQuery, filterSubject, filterBoard, filterQual, filterExp, filterSalary, filterType, filterGrade, activeTab, savedJobs]);
 
-    const profileCompletion = Math.round((profileSteps.filter(s => s.done).length / profileSteps.length) * 100);
+        // Text query filters
+        if (searchQuery) {
+            const query = searchQuery.toLowerCase();
+            list = list.filter(j =>
+                j.title.toLowerCase().includes(query) ||
+                j.school.toLowerCase().includes(query) ||
+                j.subject.toLowerCase().includes(query)
+            );
+        }
+        if (locationQuery) {
+            const loc = locationQuery.toLowerCase();
+            list = list.filter(j =>
+                j.location.toLowerCase().includes(loc) ||
+                j.state.toLowerCase().includes(loc)
+            );
+        }
 
-    // ── Column 1: Filter Panel ───────────────
-    const FiltersColumn = () => (
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                    <FaFilter className="text-[var(--color-primary)] text-sm" />
-                    <span className="text-[13px] font-bold text-[var(--color-primary)]">Search Filters</span>
-                    {activeFilterCount > 0 && (
-                        <span className="bg-[var(--color-secondary)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                            {activeFilterCount}
-                        </span>
-                    )}
-                </div>
-                {activeFilterCount > 0 && (
-                    <button onClick={resetFilters} className="text-xs text-red-400 hover:text-red-600 font-semibold flex items-center gap-1">
-                        <FaTimes className="text-xs" /> Reset
-                    </button>
-                )}
-            </div>
+        // Multi-select pill filters
+        if (filterSubject !== 'All Subjects') list = list.filter(j => j.subject === filterSubject);
+        if (filterBoard !== 'All Boards') list = list.filter(j => j.board === filterBoard);
+        if (filterExp !== 'Any Experience') list = list.filter(j => j.experience === filterExp);
+        if (filterType !== 'All Types') list = list.filter(j => j.jobType === filterType);
+        if (filterGrade !== 'All Levels') list = list.filter(j => j.gradeLevel === filterGrade);
+        if (filterSalary !== 'Any Salary') {
+            const minVal = salaryRangeMap[filterSalary];
+            list = list.filter(j => j.salaryMin >= minVal);
+        }
 
-            <FilterSection title="Subject">
-                <div className="flex flex-wrap gap-1">
-                    {subjectOptions.map(s => (
-                        <FilterChip key={s} label={s === 'All Subjects' ? 'All' : s} selected={filterSubject === s} onClick={() => setFilterSubject(s)} />
-                    ))}
-                </div>
-            </FilterSection>
+        return list;
+    }, [jobs, activeTab, savedJobIds, applications, searchQuery, locationQuery, filterSubject, filterBoard, filterExp, filterType, filterGrade, filterSalary, teacherSettings]);
 
-            <FilterSection title="Board Type">
-                <div className="flex flex-wrap gap-1">
-                    {boardOptions.map(b => (
-                        <FilterChip key={b} label={b === 'All Boards' ? 'All' : b} selected={filterBoard === b} onClick={() => setFilterBoard(b)} />
-                    ))}
-                </div>
-            </FilterSection>
+    // Recruiter: Filter applicants
+    const filteredApplicants = useMemo(() => {
+        let list = applications;
 
-            <FilterSection title="Qualification">
-                <div className="flex flex-wrap gap-1">
-                    {qualificationOptions.map(q => (
-                        <FilterChip key={q} label={q === 'All Qualifications' ? 'All' : q} selected={filterQual === q} onClick={() => setFilterQual(q)} />
-                    ))}
-                </div>
-            </FilterSection>
+        if (applicantStatusFilter !== 'All Statuses') {
+            list = list.filter(a => a.status === applicantStatusFilter);
+        }
+        if (applicantExpFilter !== 'Any Experience') {
+            // matches experience requirements
+            const matchingJobs = jobs.filter(j => j.experience === applicantExpFilter).map(j => j.id);
+            list = list.filter(a => matchingJobs.includes(a.jobId));
+        }
+        if (applicantSubjectFilter !== 'All Subjects') {
+            const matchingJobs = jobs.filter(j => j.subject === applicantSubjectFilter).map(j => j.id);
+            list = list.filter(a => matchingJobs.includes(a.jobId));
+        }
 
-            <FilterSection title="Experience">
-                <div className="flex flex-wrap gap-1">
-                    {experienceOptions.map(e => (
-                        <FilterChip key={e} label={e === 'Any Experience' ? 'Any' : e} selected={filterExp === e} onClick={() => setFilterExp(e)} />
-                    ))}
-                </div>
-            </FilterSection>
+        return list;
+    }, [applications, applicantStatusFilter, applicantExpFilter, applicantSubjectFilter, jobs]);
 
-            <FilterSection title="Salary Range">
-                <div className="flex flex-wrap gap-1">
-                    {salaryOptions.map(s => (
-                        <FilterChip key={s} label={s === 'Any Salary' ? 'Any' : s} selected={filterSalary === s} onClick={() => setFilterSalary(s)} />
-                    ))}
-                </div>
-            </FilterSection>
+    // --- Action Handlers ---
 
-            <FilterSection title="Job Type">
-                <div className="flex flex-wrap gap-1">
-                    {jobTypeOptions.map(t => (
-                        <FilterChip key={t} label={t === 'All Types' ? 'All' : t} selected={filterType === t} onClick={() => setFilterType(t)} />
-                    ))}
-                </div>
-            </FilterSection>
+    const handleToggleSave = async (id: string) => {
+        try {
+            const isSaved = await jobsRepository.toggleSaveJob(DUMMY_TEACHER_ID, id);
+            setSavedJobIds(prev => isSaved ? [...prev, id] : prev.filter(item => item !== id));
+            toast.success(isSaved ? 'Job saved to bookmarks.' : 'Job removed from bookmarks.');
+            window.dispatchEvent(new CustomEvent('jobs:updated'));
+            await loadData();
+        } catch (err) {
+            toast.error('Failed to save bookmark.');
+        }
+    };
 
-            <FilterSection title="Grade Level" defaultOpen={false}>
-                <div className="flex flex-wrap gap-1">
-                    {gradeLevelOptions.map(g => (
-                        <FilterChip key={g} label={g === 'All Levels' ? 'All' : g} selected={filterGrade === g} onClick={() => setFilterGrade(g)} />
-                    ))}
-                </div>
-            </FilterSection>
+    const handleApplyClick = (job: Job) => {
+        if (!resumeData) {
+            toast.warn('Please upload a professional resume before applying.');
+            return;
+        }
+        setApplyingJob(job);
+        setCoverLetterInput('');
+    };
 
-            {/* Job Alert mini-CTA */}
-            <div className="mt-3 rounded-lg p-3 text-center" style={{ background: 'linear-gradient(135deg,var(--color-primary),var(--color-secondary))' }}>
-                <FaBell className="mx-auto text-lg text-white/80 mb-1" />
-                <p className="text-[12px] font-bold text-white">Never Miss a Role</p>
-                <p className="text-xs text-white/60 mt-0.5">Get email alerts for these filters</p>
-                <button className="mt-2 w-full bg-white/20 hover:bg-white/30 border border-white/30 text-white text-xs font-semibold py-1.5 rounded-lg transition-colors">
-                    Set Alert
-                </button>
-            </div>
-        </div>
-    );
+    const handleConfirmApply = async () => {
+        if (!applyingJob) return;
 
-    // ── Column 3: Innovative Right Panel ──────────────────────────────────────
-    const RightPanel = () => (
-        <div className="flex flex-col gap-4">
+        try {
+            await jobsRepository.applyJob({
+                jobId: applyingJob.id,
+                teacherId: DUMMY_TEACHER_ID,
+                teacherName: 'Jessica Taylor', // Mock Teacher Profile details
+                teacherEmail: 'jessica.taylor@teacherdesk.com',
+                coverLetter: coverLetterInput.trim() || undefined
+            });
 
-            {/* 1. Profile Strength */}
-            <RightPanelCard>
-                <RightPanelTitle icon={<BiTargetLock />} title="Profile Strength" />
-                <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-gray-500">{profileCompletion}% Complete</span>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${profileCompletion >= 80 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {profileCompletion >= 80 ? 'Strong' : 'Needs Work'}
-                    </span>
-                </div>
-                {/* Progress bar */}
-                <div className="w-full bg-gray-100 rounded-full h-2 mb-3">
-                    <motion.div
-                        className="h-2 rounded-full"
-                        style={{ background: 'linear-gradient(90deg,var(--color-primary),var(--color-secondary))' }}
-                        initial={{ width: 0 }}
-                        animate={{ width: `${profileCompletion}%` }}
-                        transition={{ duration: 0.9, ease: 'easeOut' }}
-                    />
-                </div>
-                {/* Steps */}
-                <ul className="flex flex-col gap-1.5">
-                    {profileSteps.map((step, i) => (
-                        <li key={i} className="flex items-center gap-2">
-                            {step.done
-                                ? <FaCheckCircle className="text-[var(--color-secondary)] text-sm flex-shrink-0" />
-                                : <div className="w-4 h-4 rounded-full border-2 border-dashed border-gray-300 flex-shrink-0" />
-                            }
-                            <span className={`text-xs font-medium ${step.done ? 'text-gray-500 line-through' : 'text-gray-700'}`}>
-                                {step.label}
-                            </span>
-                            {!step.done && (
-                                <span className="ml-auto text-xs font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
-                                    Pending
-                                </span>
-                            )}
-                        </li>
-                    ))}
-                </ul>
-                <button className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-[var(--color-primary)] border border-[var(--color-primary)]/30 py-1.5 rounded-lg hover:bg-blue-50 transition-colors">
-                    <FaUpload className="text-xs" /> Upload Demo Video
-                </button>
-            </RightPanelCard>
+            toast.success(`Application sent successfully for: ${applyingJob.title}`);
+            setApplyingJob(null);
 
-            {/* 2. Application Tracker */}
-            <RightPanelCard>
-                <RightPanelTitle icon={<FaCalendarCheck />} title="Application Tracker" />
-                <ul className="flex flex-col gap-2">
-                    {appliedJobs.map((a) => (
-                        <motion.li
-                            key={a.id}
-                            whileHover={{ x: 3 }}
-                            transition={{ type: 'spring', stiffness: 400 }}
-                            className="flex items-center justify-between border border-gray-100 rounded-lg px-3 py-2 hover:border-[var(--color-primary)]/30 transition-colors cursor-pointer"
-                        >
-                            <div>
-                                <p className="text-xs font-semibold text-gray-700 leading-tight">{a.title}</p>
-                                <p className="text-xs text-gray-400">{a.school}</p>
-                            </div>
-                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${a.statusColor}`}>
-                                {a.status}
-                            </span>
-                        </motion.li>
-                    ))}
-                </ul>
-                <button className="mt-2 w-full text-xs text-[var(--color-primary)] hover:text-[var(--color-secondary)] font-semibold flex items-center justify-center gap-1 transition-colors">
-                    View all applications <FaArrowRight className="text-xs" />
-                </button>
-            </RightPanelCard>
+            // Dispatch a reload event to update any listening widgets
+            window.dispatchEvent(new CustomEvent('jobs:updated'));
+            await loadData();
+        } catch (err: any) {
+            toast.error(err.message || 'Application submission failed.');
+        }
+    };
 
-            {/* 3. Salary Insights */}
-            <RightPanelCard>
-                <RightPanelTitle icon={<FaChartBar />} title="Salary Insights" />
-                <p className="text-[10px] text-gray-400 -mt-1 mb-2">Average monthly salary by subject</p>
-                <ul className="flex flex-col gap-2.5">
-                    {salaryInsights.map((s, i) => (
-                        <li key={i}>
-                            <div className="flex items-center justify-between mb-0.5">
-                                <span className="text-xs font-medium text-gray-700">{s.subject}</span>
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-xs font-bold text-[var(--color-primary)]">{s.avg}</span>
-                                    <span className={`text-xs font-bold flex items-center gap-0.5 ${s.up ? 'text-green-600' : 'text-red-500'}`}>
-                                        {s.up ? <MdTrendingUp /> : '↓'} {s.trend}
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="w-full bg-gray-100 rounded-full h-1.5">
-                                <motion.div
-                                    className="h-1.5 rounded-full"
-                                    style={{ background: s.up ? 'linear-gradient(90deg,var(--color-primary),var(--color-secondary))' : '#f87171' }}
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${40 + i * 15}%` }}
-                                    transition={{ duration: 0.8, delay: i * 0.1, ease: 'easeOut' }}
-                                />
-                            </div>
-                        </li>
-                    ))}
-                </ul>
-            </RightPanelCard>
+    const handleTeacherSettingsUpdate = async (fields: Partial<TeacherSettings>) => {
+        try {
+            const updated = await jobsRepository.saveTeacherSettings(DUMMY_TEACHER_ID, fields);
+            setTeacherSettings(updated);
+            toast.success('Availability settings updated.');
+            window.dispatchEvent(new CustomEvent('jobs:updated'));
+            await loadData();
+        } catch (err) {
+            toast.error('Failed to update availability.');
+        }
+    };
 
-            {/* 4. Trending Searches */}
-            <RightPanelCard>
-                <RightPanelTitle icon={<FaFireAlt />} title="Trending Now" />
-                <div className="flex flex-col gap-1.5">
-                    {trendingSearches.map((term, i) => (
-                        <motion.button
-                            key={i}
-                            whileHover={{ x: 4 }}
-                            transition={{ type: 'spring', stiffness: 400 }}
-                            onClick={() => setSearchQuery(term)}
-                            className="flex items-center gap-2 text-left text-xs text-gray-600 hover:text-[var(--color-primary)] font-medium py-1 border-b border-gray-50 last:border-0 transition-colors group"
-                        >
-                            <span className="text-xs font-bold text-gray-300 w-4">#{i + 1}</span>
-                            <FaSearch className="text-xs text-gray-300 group-hover:text-[var(--color-primary)] transition-colors" />
-                            {term}
-                            <MdTrendingUp className="ml-auto text-[var(--color-secondary)] opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </motion.button>
-                    ))}
-                </div>
-            </RightPanelCard>
+    const handleInstitutionHiringUpdate = async (status: InstitutionSettings['hiringStatus']) => {
+        try {
+            const updated = await jobsRepository.saveInstitutionSettings(DUMMY_INSTITUTION_ID, { hiringStatus: status });
+            setInstitutionSettings(updated);
+            toast.success(`Hiring status updated to: ${status}`);
 
-            {/* 5. Top Hiring Schools */}
-            <RightPanelCard>
-                <RightPanelTitle icon={<FaSchool />} title="Top Hiring Schools" />
-                <ul className="flex flex-col gap-2">
-                    {topSchools.map((sch, i) => (
-                        <motion.li
-                            key={i}
-                            whileHover={{ x: 3 }}
-                            transition={{ type: 'spring', stiffness: 400 }}
-                            className="flex items-center gap-2.5 cursor-pointer group"
-                        >
-                            <div
-                                className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs flex-shrink-0"
-                                style={{ backgroundColor: sch.color }}
-                            >
-                                {sch.initial}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-xs font-semibold text-gray-700 group-hover:text-[var(--color-primary)] transition-colors truncate">{sch.name}</p>
-                                <p className="text-xs text-gray-400">{sch.jobs} open positions</p>
-                            </div>
-                            <FaArrowRight className="text-xs text-gray-300 group-hover:text-[var(--color-primary)] transition-colors flex-shrink-0" />
-                        </motion.li>
-                    ))}
-                </ul>
-            </RightPanelCard>
+            // Notify active followers (simulation)
+            if (status === 'Actively Hiring') {
+                const activeJobsCount = jobs.filter(j => j.status === 'active').length;
+                await jobsRepository.addNotification(DUMMY_TEACHER_ID, {
+                    title: 'Ryan International is hiring!',
+                    message: `Ryan International School updated status to Actively Hiring. They have ${activeJobsCount} positions open.`,
+                    type: 'new_match'
+                });
+            }
 
-            {/* 6. Career Tip + Demo upload nudge */}
-            <div className="rounded-lg overflow-hidden" style={{ background: 'linear-gradient(135deg,#0f2a4a 0%,var(--color-primary) 50%,var(--color-secondary) 100%)' }}>
-                <div className="p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                        <FaLightbulb className="text-amber-300 text-base" />
-                        <span className="text-xs font-bold capitalize tracking-widest text-white/60">Career Tip</span>
-                    </div>
-                    <p className="text-xs font-medium text-white leading-relaxed">
-                        Schools shortlist teachers who upload a <span className="text-amber-300 font-bold">demo class video</span>. It boosts your visibility by <span className="text-green-300 font-bold">3x</span>.
-                    </p>
-                    <button className="mt-3 w-full flex items-center justify-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs font-semibold py-2 rounded-lg transition-colors">
-                        <FaVideo className="text-xs" /> Record & Upload Demo
-                    </button>
-                </div>
-            </div>
+            window.dispatchEvent(new CustomEvent('jobs:updated'));
+            await loadData();
+        } catch (err) {
+            toast.error('Failed to update hiring settings.');
+        }
+    };
 
-            {/* 7. Job Alert Setup */}
-            <RightPanelCard>
-                <RightPanelTitle icon={<FaBell />} title="Job Alert" />
-                <p className="text-xs text-gray-500 -mt-1 mb-2">Get notified when new matching jobs post</p>
-                {alertSet ? (
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="flex items-center gap-2 text-[var(--color-secondary)] bg-green-50 rounded-lg px-3 py-2"
-                    >
-                        <FaCheckCircle className="text-sm" />
-                        <span className="text-[12px] font-semibold">Alert set! We&apos;ll notify you.</span>
-                    </motion.div>
-                ) : (
-                    <div className="flex flex-col gap-2">
-                        <input
-                            type="email"
-                            placeholder="Enter your email"
-                            value={alertEmail}
-                            onChange={e => setAlertEmail(e.target.value)}
-                            className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-100 focus:border-[var(--color-primary)] transition"
-                        />
-                        <button
-                            onClick={() => { if (alertEmail) setAlertSet(true); }}
-                            className="w-full bg-[var(--color-primary)] hover:bg-[var(--color-secondary)] text-white text-xs font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5"
-                        >
-                            <FaBell className="text-xs" /> Activate Alert
-                        </button>
-                    </div>
-                )}
-            </RightPanelCard>
-        </div>
-    );
+    const handleDeleteJob = async (id: string) => {
+        if (confirm('Are you sure you want to delete this job posting?')) {
+            try {
+                await jobsRepository.deleteJob(id);
+                toast.success('Job listing deleted.');
+                window.dispatchEvent(new CustomEvent('jobs:updated'));
+                await loadData();
+            } catch (err) {
+                toast.error('Failed to delete listing.');
+            }
+        }
+    };
+
+    const handlePauseJob = async (job: Job) => {
+        try {
+            const newStatus = job.status === 'paused' ? 'active' : 'paused';
+            await jobsRepository.updateJob(job.id, { status: newStatus });
+            toast.success(`Listing status set to: ${newStatus}`);
+            window.dispatchEvent(new CustomEvent('jobs:updated'));
+            await loadData();
+        } catch (err) {
+            toast.error('Failed to update status.');
+        }
+    };
+
+    // Calculate match score for list view
+    const calculateMatchScore = (job: Job, settings: TeacherSettings) => {
+        let score = 50;
+        if (job.subject.toLowerCase() === settings.subjectExpertise.toLowerCase()) score += 20;
+        if (job.experience.toLowerCase() === settings.experience.toLowerCase()) score += 15;
+        if (job.location.toLowerCase().includes(settings.preferredLocation.toLowerCase())) score += 10;
+
+        let hits = 0;
+        job.skillsRequired.forEach(sk => {
+            if (settings.skills.some(usk => usk.toLowerCase().includes(sk.toLowerCase()))) hits++;
+        });
+        if (job.skillsRequired.length > 0) score += Math.round((hits / job.skillsRequired.length) * 25);
+        else score += 25;
+
+        return { score: Math.min(score, 100) };
+    };
+
+    if (roleLoading) {
+        return <LoadingScreen message="Verifying profile access..." />;
+    }
 
     return (
-        <div className="min-h-screen bg-[#eeeeee]">
+        <div className="min-h-screen bg-[#f4f6fa] text-gray-800 flex flex-col font-sans">
             <Navbar />
 
-            {/* ── Page Header Banner ── */}
-            <motion.div
-                initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}
-                className="relative overflow-hidden"
-                style={{ background: 'linear-gradient(135deg,#0f2a4a 0%,var(--color-primary) 55%,var(--color-secondary) 100%)' }}
-            >
-                <div className="absolute -top-10 -right-10 w-56 h-56 rounded-full bg-white/[0.04] pointer-events-none" />
-                <div className="absolute -bottom-12 -left-8 w-44 h-44 rounded-full bg-white/[0.04] pointer-events-none" />
-
-                <div className="max-w-[1440px] mx-auto px-4 py-7 md:py-10 relative z-10">
-                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
-                        <div>
-                            <span className="inline-block bg-white/15 border border-white/25 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full capitalize tracking-widest mb-2">
-                                🎓 Education Jobs Platform
-                            </span>
-                            <h1 className="text-2xl md:text-3xl font-bold oswald-font tracking-wide text-white flex items-center gap-2">
-                                <MdWork className="text-2xl opacity-70" /> Find Your Teaching Career
-                            </h1>
-                            <p className="text-white/65 text-sm mt-1 max-w-lg">
-                                Opportunities across CBSE, ICSE & State Board schools — built exclusively for educators.
-                            </p>
+            {/* ── ROLE SWITCHER & NOTIFICATION BUTTON ROW ── */}
+            <div className="bg-white border-b border-gray-200 py-3 px-4 shadow-2xs">
+                <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 flex-wrap">
+                    {/* Switcher badge */}
+                    {(userRole === 'super_admin' || !userRole) && (
+                        <div className="flex items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+                            <button
+                                onClick={() => setViewMode('teacher')}
+                                className={`text-xs font-black px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 ${viewMode === 'teacher'
+                                        ? 'bg-[var(--color-primary)] text-white shadow'
+                                        : 'text-gray-600 hover:bg-slate-200'
+                                    }`}
+                            >
+                                <FaUserTie className="text-2xs" /> Educator Profile View
+                            </button>
+                            <button
+                                onClick={() => setViewMode('institution')}
+                                className={`text-xs font-black px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 ${viewMode === 'institution'
+                                        ? 'bg-[var(--color-secondary)] text-white shadow'
+                                        : 'text-gray-600 hover:bg-slate-200'
+                                    }`}
+                            >
+                                <FaSchool className="text-2xs" /> Institution Recruiter View
+                            </button>
                         </div>
-                        <div className="flex items-center gap-3 flex-wrap">
-                            {[{ v: '2,400+', l: 'Active Jobs' }, { v: '850+', l: 'Schools' }, { v: '12K+', l: 'Placements' }].map((s, i) => (
-                                <div key={i} className="bg-white/10 border border-white/20 rounded-lg px-4 py-2.5 text-center backdrop-blur-sm">
-                                    <p className="text-xl font-bold text-white oswald-font">{s.v}</p>
-                                    <p className="text-[11px] text-white/55">{s.l}</p>
-                                </div>
-                            ))}
+                    )}
+
+                    {/* Alerts button */}
+                    <button
+                        onClick={() => setShowNotifications(true)}
+                        className="relative p-2.5 bg-white border border-slate-200 hover:border-[var(--color-primary)] hover:bg-slate-50 text-gray-700 hover:text-[var(--color-primary)] rounded-xl shadow-2xs transition flex items-center gap-2 text-xs font-bold"
+                    >
+                        <FaBell className="text-base" /> Job Alerts Log
+                        {unreadNotifsCount > 0 && (
+                            <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white font-black text-3xs px-2.5 py-0.5 rounded-full animate-bounce shadow">
+                                {unreadNotifsCount}
+                            </span>
+                        )}
+                    </button>
+                </div>
+            </div>
+
+            {/* ── BANNER BANNER ── */}
+            <div className="relative overflow-hidden py-10 text-white" style={{ background: 'linear-gradient(135deg, #0a1f33 0%, var(--color-primary) 60%, var(--color-secondary) 100%)' }}>
+                <div className="absolute top-0 right-0 w-80 h-80 rounded-full bg-white/[0.03] pointer-events-none" />
+                <div className="max-w-7xl mx-auto px-4 relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                    <div>
+                        <span className="bg-white/10 border border-white/20 text-white text-[10px] font-black px-3.5 py-1 rounded-full uppercase tracking-widest mb-3 inline-block">
+                            🎓 Exclusive Educator Placements
+                        </span>
+                        <h1 className="text-2xl sm:text-3xl font-bold oswald-font tracking-wide">
+                            {viewMode === 'teacher' ? 'Discover Your Perfect Classroom' : 'Recruitment Pipeline Controls'}
+                        </h1>
+                        <p className="text-white/60 text-xs sm:text-sm mt-1 max-w-xl">
+                            {viewMode === 'teacher'
+                                ? 'Find matching subject teaching roles in elite CBSE, ICSE, and Montessori schools.'
+                                : 'Manage active postings, review smart matches, and coordinate interview communications.'}
+                        </p>
+                    </div>
+                    {/* Stat boxes */}
+                    <div className="flex gap-3">
+                        <div className="bg-white/10 border border-white/15 p-3 rounded-xl text-center backdrop-blur-3xs">
+                            <div className="text-base font-black oswald-font leading-none">{jobs.length}</div>
+                            <div className="text-[10px] text-white/50 mt-1 uppercase">Jobs Listed</div>
+                        </div>
+                        <div className="bg-white/10 border border-white/15 p-3 rounded-xl text-center backdrop-blur-3xs">
+                            <div className="text-base font-black oswald-font leading-none">{applications.length}</div>
+                            <div className="text-[10px] text-white/50 mt-1 uppercase">Applicants</div>
                         </div>
                     </div>
+                </div>
+            </div>
 
-                    {/* Smart Search Bar */}
-                    <div className="mt-5 bg-white rounded-lg shadow-xl p-1.5 flex flex-col sm:flex-row gap-1.5">
-                        <div className="flex-1 flex items-center gap-2 px-4 py-1 border-r border-gray-200">
-                            <FaSearch className="text-[var(--color-primary)] opacity-50 text-sm flex-shrink-0" />
-                            <input
-                                type="text"
-                                placeholder="Job title, subject or school…"
-                                value={searchQuery}
-                                onChange={e => setSearchQuery(e.target.value)}
-                                className="flex-1 outline-none text-sm text-gray-700 placeholder-gray-400 bg-transparent py-1.5"
-                            />
-                            {searchQuery && (
-                                <button onClick={() => setSearchQuery('')}>
-                                    <FaTimes className="text-xs text-gray-300 hover:text-gray-500" />
+            {/* ── MAIN CONTENT LAYER ── */}
+            <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
+
+                {/* --- TEACHER MODE DASHBOARD --- */}
+                {viewMode === 'teacher' && (
+                    <div className="flex flex-col gap-6">
+
+                        {/* Analytics widgets row */}
+                        <AnalyticsPanel role="teacher" userId={DUMMY_TEACHER_ID} />
+
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+                            {/* Column 1: Filters Panel & settings (Col 4) */}
+                            <aside className="lg:col-span-4 flex flex-col gap-5">
+
+                                {/* Resume Upload card */}
+                                <ResumeUpload teacherId={DUMMY_TEACHER_ID} onResumeChange={loadData} />
+
+                                {/* Open-to-work toggle card */}
+                                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                                    <h3 className="text-sm font-bold text-[var(--color-primary)] mb-3 flex items-center gap-2">
+                                        <FaUserEdit className="text-lg text-[var(--color-secondary)]" /> Availability Settings
+                                    </h3>
+                                    {teacherSettings && (
+                                        <div className="space-y-4">
+                                            {/* Toggle switch */}
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <span className="text-xs font-bold text-gray-700">Open to Work</span>
+                                                    <p className="text-[10px] text-gray-400">Allows institutions to discover you.</p>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleTeacherSettingsUpdate({ openToWork: !teacherSettings.openToWork })}
+                                                    className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none ${teacherSettings.openToWork ? 'bg-green-500' : 'bg-gray-300'
+                                                        }`}
+                                                >
+                                                    <span className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full shadow transition-transform duration-200 ${teacherSettings.openToWork ? 'translate-x-5' : 'translate-x-0'
+                                                        }`} />
+                                                </button>
+                                            </div>
+
+                                            {/* Availability Select */}
+                                            {teacherSettings.openToWork && (
+                                                <div className="space-y-3 pt-2.5 border-t border-slate-100">
+                                                    <div className="flex flex-col gap-1">
+                                                        <label className="text-[10px] font-bold text-gray-500 uppercase">Availability Status</label>
+                                                        <select
+                                                            value={teacherSettings.availabilityStatus}
+                                                            onChange={e => handleTeacherSettingsUpdate({ availabilityStatus: e.target.value as any })}
+                                                            className="text-xs border border-gray-200 bg-white p-2 rounded-lg outline-none"
+                                                        >
+                                                            {['Available Immediately', 'Available in 15 Days', 'Available in 30 Days', 'Not Currently Available'].map(opt => (
+                                                                <option key={opt} value={opt}>{opt}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+
+                                                    <div className="flex flex-col gap-1">
+                                                        <label className="text-[10px] font-bold text-gray-500 uppercase">Visibility Setting</label>
+                                                        <select
+                                                            value={teacherSettings.visibilitySetting}
+                                                            onChange={e => handleTeacherSettingsUpdate({ visibilitySetting: e.target.value as any })}
+                                                            className="text-xs border border-gray-200 bg-white p-2 rounded-lg outline-none"
+                                                        >
+                                                            {['Public', 'Followers Only', 'Institutions Only'].map(opt => (
+                                                                <option key={opt} value={opt}>{opt}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Filters list */}
+                                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                                            <FaFilter className="text-xs text-[var(--color-primary)]" /> Advanced Filter
+                                        </h3>
+                                        {activeFilterCount > 0 && (
+                                            <button
+                                                onClick={resetFilters}
+                                                className="text-[10px] font-bold text-red-500 hover:text-red-700 flex items-center gap-1"
+                                            >
+                                                <FaTimes /> Clear All
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-3.5">
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-[10px] font-black text-gray-500 uppercase">Subject</label>
+                                            <select
+                                                value={filterSubject}
+                                                onChange={e => setFilterSubject(e.target.value)}
+                                                className="text-xs border border-gray-200 rounded-lg p-2 bg-white outline-none"
+                                            >
+                                                {['All Subjects', 'Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Computer Science', 'General', 'Special Education'].map(s => (
+                                                    <option key={s} value={s}>{s}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-[10px] font-black text-gray-500 uppercase">Board Type</label>
+                                            <select
+                                                value={filterBoard}
+                                                onChange={e => setFilterBoard(e.target.value)}
+                                                className="text-xs border border-gray-200 rounded-lg p-2 bg-white outline-none"
+                                            >
+                                                {['All Boards', 'CBSE', 'ICSE', 'State Board'].map(b => (
+                                                    <option key={b} value={b}>{b}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-[10px] font-black text-gray-500 uppercase">Grade Level</label>
+                                            <select
+                                                value={filterGrade}
+                                                onChange={e => setFilterGrade(e.target.value)}
+                                                className="text-xs border border-gray-200 rounded-lg p-2 bg-white outline-none"
+                                            >
+                                                {['All Levels', 'Primary', 'Middle School', 'High School'].map(g => (
+                                                    <option key={g} value={g}>{g}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-[10px] font-black text-gray-500 uppercase">Employment Type</label>
+                                            <select
+                                                value={filterType}
+                                                onChange={e => setFilterType(e.target.value)}
+                                                className="text-xs border border-gray-200 rounded-lg p-2 bg-white outline-none"
+                                            >
+                                                {['All Types', 'Full-time', 'Part-time', 'Contract', 'Remote', 'Hybrid'].map(t => (
+                                                    <option key={t} value={t}>{t}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-[10px] font-black text-gray-500 uppercase">Experience Required</label>
+                                            <select
+                                                value={filterExp}
+                                                onChange={e => setFilterExp(e.target.value)}
+                                                className="text-xs border border-gray-200 rounded-lg p-2 bg-white outline-none"
+                                            >
+                                                {['Any Experience', 'Fresher', '1-3 Years', '3-5 Years', '5-10 Years', '10+ Years'].map(e => (
+                                                    <option key={e} value={e}>{e}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-[10px] font-black text-gray-500 uppercase">Salary Range</label>
+                                            <select
+                                                value={filterSalary}
+                                                onChange={e => setFilterSalary(e.target.value)}
+                                                className="text-xs border border-gray-200 rounded-lg p-2 bg-white outline-none"
+                                            >
+                                                {['Any Salary', '₹10k–₹20k', '₹20k–₹40k', '₹40k–₹80k'].map(s => (
+                                                    <option key={s} value={s}>{s}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </aside>
+
+                            {/* Column 2: Dashboard Content feeds (Col 8) */}
+                            <section className="lg:col-span-8 flex flex-col gap-4">
+
+                                {/* Search input block */}
+                                <div className="bg-white rounded-xl border border-gray-200 p-2 shadow-sm flex flex-col sm:flex-row gap-2">
+                                    <div className="flex-1 flex items-center gap-2 px-3 py-1 border-r border-gray-100">
+                                        <FaSearch className="text-gray-400 text-xs flex-shrink-0" />
+                                        <input
+                                            type="text"
+                                            value={searchQuery}
+                                            onChange={e => setSearchQuery(e.target.value)}
+                                            placeholder="Search by role, subject, or institution..."
+                                            className="w-full text-xs outline-none py-2 bg-transparent text-gray-700 placeholder-gray-400"
+                                        />
+                                        {searchQuery && (
+                                            <button onClick={() => setSearchQuery('')} className="text-gray-300 hover:text-gray-500">
+                                                <FaTimes />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="flex-1 flex items-center gap-2 px-3 py-1">
+                                        <FaMapMarkerAlt className="text-gray-400 text-xs flex-shrink-0" />
+                                        <input
+                                            type="text"
+                                            value={locationQuery}
+                                            onChange={e => setLocationQuery(e.target.value)}
+                                            placeholder="Search by city, state, or 'Remote'..."
+                                            className="w-full text-xs outline-none py-2 bg-transparent text-gray-700 placeholder-gray-400"
+                                        />
+                                        {locationQuery && (
+                                            <button onClick={() => setLocationQuery('')} className="text-gray-300 hover:text-gray-500">
+                                                <FaTimes />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Tabs Toolbar */}
+                                <div className="flex items-center justify-between gap-4 flex-wrap border-b border-gray-200 pb-2">
+                                    <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden shadow-2xs">
+                                        {([
+                                            { key: 'all', label: 'All Jobs' },
+                                            { key: 'recommended', label: 'Smart Matches' },
+                                            { key: 'saved', label: `Saved (${savedJobIds.length})` },
+                                            { key: 'applied', label: 'My Applications' }
+                                        ] as const).map(tab => (
+                                            <button
+                                                key={tab.key}
+                                                onClick={() => setActiveTab(tab.key)}
+                                                className={`text-xs font-bold px-4 py-2.5 transition ${activeTab === tab.key
+                                                        ? 'bg-[var(--color-primary)] text-white'
+                                                        : 'text-gray-600 hover:bg-slate-50'
+                                                    }`}
+                                            >
+                                                {tab.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <span className="text-xs text-gray-400 font-medium">
+                                        <strong className="text-gray-700">{filteredJobs.length}</strong> listings found
+                                    </span>
+                                </div>
+
+                                {/* Job grid listing */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {filteredJobs.map((job) => {
+                                        const isSaved = savedJobIds.includes(job.id);
+                                        const hasApplied = applications.some(a => a.jobId === job.id && a.teacherId === DUMMY_TEACHER_ID);
+                                        const matchRating = teacherSettings ? calculateMatchScore(job, teacherSettings).score : null;
+
+                                        return (
+                                            <motion.div
+                                                key={job.id}
+                                                whileHover={{ y: -2 }}
+                                                className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col justify-between shadow-2xs hover:shadow-md transition relative overflow-hidden"
+                                            >
+                                                {job.isFeatured && (
+                                                    <div className="absolute top-0 right-0">
+                                                        <span className="bg-gradient-to-l from-[var(--color-primary)] to-[var(--color-secondary)] text-white text-[9px] font-black px-2.5 py-0.5 rounded-bl-lg uppercase tracking-wider">
+                                                            Featured
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                <div>
+                                                    {/* Row 1: School Badge & Bookmark */}
+                                                    <div className="flex items-start justify-between gap-3 mb-2.5">
+                                                        <div className="flex items-center gap-3">
+                                                            <div
+                                                                className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-black text-xs shadow-2xs flex-shrink-0"
+                                                                style={{ backgroundColor: job.schoolColor }}
+                                                            >
+                                                                {job.schoolInitial}
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="font-bold text-gray-800 text-xs sm:text-sm leading-snug line-clamp-1">{job.title}</h4>
+                                                                <div className="flex items-center gap-1.5 mt-0.5 text-gray-400">
+                                                                    <span className="text-[10px] font-bold truncate max-w-[130px]">{job.school}</span>
+                                                                    {job.isVerified && <MdVerified className="text-[var(--color-primary)] text-xs flex-shrink-0" />}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => handleToggleSave(job.id)}
+                                                            className="p-1 text-gray-300 hover:text-[var(--color-secondary)] transition flex-shrink-0"
+                                                        >
+                                                            {isSaved ? <FaBookmark className="text-[var(--color-secondary)]" /> : <FaRegBookmark />}
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Row 2: Tag Pills & matching badge */}
+                                                    <div className="flex flex-wrap gap-1 mb-3">
+                                                        {job.tags.slice(0, 3).map((tag, idx) => (
+                                                            <span key={idx} className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-50 border border-slate-100 text-slate-500">
+                                                                {tag}
+                                                            </span>
+                                                        ))}
+                                                        {matchRating !== null && (
+                                                            <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-blue-50 text-[var(--color-primary)] border border-blue-100">
+                                                                {matchRating}% Match
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Row 3: Meta details */}
+                                                    <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 border-t border-slate-50 pt-2.5 pb-2 text-[11px] text-gray-500">
+                                                        <div className="flex items-center gap-1.5 truncate">
+                                                            <MdLocationOn className="text-gray-400 text-xs flex-shrink-0" />
+                                                            <span>{job.location}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 truncate">
+                                                            <FaRupeeSign className="text-amber-500 text-xs flex-shrink-0" />
+                                                            <span>{job.salary}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 truncate">
+                                                            <FaBriefcase className="text-gray-400 text-xs flex-shrink-0" />
+                                                            <span>{job.experience} Exp</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 truncate">
+                                                            <FaClock className="text-gray-400 text-xs flex-shrink-0" />
+                                                            <span>Deadline: {new Date(job.deadline).toLocaleDateString()}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Action Apply button */}
+                                                <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2.5">
+                                                    <span className="text-[10px] text-gray-400 font-medium">
+                                                        {job.applicants} applied
+                                                    </span>
+                                                    {hasApplied ? (
+                                                        <button
+                                                            disabled
+                                                            className="bg-slate-100 text-slate-400 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-slate-200 flex items-center gap-1"
+                                                        >
+                                                            <FaCheckCircle className="text-emerald-500" /> Applied
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => handleApplyClick(job)}
+                                                            className="bg-[var(--color-primary)] hover:bg-[var(--color-secondary)] text-white text-[10px] font-bold px-4 py-1.5 rounded-lg shadow-2xs hover:shadow transition flex items-center gap-1"
+                                                        >
+                                                            <HiLightningBolt /> Apply
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </motion.div>
+                                        );
+                                    })}
+
+                                    {filteredJobs.length === 0 && (
+                                        <div className="col-span-2 bg-white rounded-xl border border-gray-200 p-12 text-center shadow-2xs">
+                                            <FaBriefcase className="mx-auto text-4xl text-slate-200 mb-3" />
+                                            <h4 className="font-bold text-gray-700 text-sm">No Jobs Found</h4>
+                                            <p className="text-xs text-gray-400 mt-1 max-w-[280px] mx-auto">Try broadening your subject filter or updating your preferred city keywords.</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                            </section>
+
+                        </div>
+
+                    </div>
+                )}
+
+                {/* --- RECRUITER (INSTITUTION) MODE --- */}
+                {viewMode === 'institution' && (
+                    <div className="flex flex-col gap-6">
+
+                        {/* Analytics summary counter */}
+                        <AnalyticsPanel role="institution" userId={DUMMY_INSTITUTION_ID} />
+
+                        {/* Recruiter Tabs row */}
+                        <div className="flex items-center justify-between border-b border-gray-200 pb-2.5 flex-wrap gap-4">
+                            <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden shadow-2xs">
+                                <button
+                                    onClick={() => setInstTab('active-postings')}
+                                    className={`text-xs font-bold px-4 py-2.5 transition ${instTab === 'active-postings' ? 'bg-[var(--color-secondary)] text-white' : 'text-gray-600 hover:bg-slate-50'
+                                        }`}
+                                >
+                                    Active Job Postings ({jobs.length})
+                                </button>
+                                <button
+                                    onClick={() => setInstTab('applicants')}
+                                    className={`text-xs font-bold px-4 py-2.5 transition ${instTab === 'applicants' ? 'bg-[var(--color-secondary)] text-white' : 'text-gray-600 hover:bg-slate-50'
+                                        }`}
+                                >
+                                    Applicant Tracking ({applications.length})
+                                </button>
+                                <button
+                                    onClick={() => setInstTab('hiring-settings')}
+                                    className={`text-xs font-bold px-4 py-2.5 transition ${instTab === 'hiring-settings' ? 'bg-[var(--color-secondary)] text-white' : 'text-gray-600 hover:bg-slate-50'
+                                        }`}
+                                >
+                                    Hiring Status Controls
+                                </button>
+                            </div>
+
+                            {instTab === 'active-postings' && (
+                                <button
+                                    onClick={() => { setEditingJob(null); setShowJobCreator(true); }}
+                                    className="bg-[var(--color-primary)] hover:bg-[var(--color-secondary)] text-white text-xs font-bold px-4 py-2.5 rounded-lg shadow-sm flex items-center gap-1.5 transition duration-200"
+                                >
+                                    <FaPlus /> Post a Job
                                 </button>
                             )}
                         </div>
-                        <div className="flex-1 flex items-center gap-2 px-4 py-1">
-                            <FaMapMarkerAlt className="text-[var(--color-secondary)] opacity-50 text-sm flex-shrink-0" />
-                            <input
-                                type="text"
-                                placeholder="City, state or 'Remote'…"
-                                value={locationQuery}
-                                onChange={e => setLocationQuery(e.target.value)}
-                                className="flex-1 outline-none text-sm text-gray-700 placeholder-gray-400 bg-transparent py-1.5"
-                            />
-                        </div>
-                        <button className="bg-[var(--color-primary)] hover:bg-[var(--color-secondary)] text-white font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm flex items-center gap-2 shadow-md flex-shrink-0">
-                            <FaSearch /> Search
-                        </button>
-                    </div>
 
-                    {/* Quick pills */}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        {['Mathematics', 'Physics', 'English', 'Biology', 'Computer Science', 'Chemistry'].map(s => (
-                            <button
-                                key={s}
-                                onClick={() => setFilterSubject(s)}
-                                className={`text-[11px] border px-3 py-1 rounded-full transition-all ${filterSubject === s
-                                    ? 'bg-white text-[var(--color-primary)] font-bold border-white'
-                                    : 'text-white/75 border-white/25 hover:text-white hover:border-white/50 hover:bg-white/10'
-                                    }`}
-                            >
-                                {s}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            </motion.div>
-
-            {/* ── School CTA ── */}
-            <div className="max-w-[1440px] mx-auto px-4 mt-4">
-                <motion.div
-                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.4 }}
-                    className="rounded-lg bg-gradient-to-r from-blue-50 to-emerald-50 border border-blue-100 flex flex-col sm:flex-row items-center justify-between px-5 py-3.5 gap-3 shadow-sm"
-                >
-                    <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-[var(--color-primary)] flex items-center justify-center text-white flex-shrink-0">
-                            <FaSchool className="text-base" />
-                        </div>
-                        <div>
-                            <p className="text-[11px] font-bold text-[var(--color-primary)] capitalize tracking-wider">For Institution</p>
-                            <p className="text-[13px] text-gray-600">Post a vacancy and connect with 50,000+ qualified teachers instantly.</p>
-                        </div>
-                    </div>
-                    <button className="bg-[var(--color-secondary)] hover:bg-[#0d3812] text-white text-[13px] font-semibold px-5 py-2 rounded-lg flex items-center gap-2 flex-shrink-0 transition-colors">
-                        <MdWork /> Post a Job <FaArrowRight className="text-xs" />
-                    </button>
-                </motion.div>
-            </div>
-
-            {/* ══ 3-Column Main Layout ══ */}
-            <section className="max-w-[1440px] mx-auto px-4 py-8 pb-16">
-                {/* items-start is essential: prevents grid from stretching children to full height, which breaks sticky */}
-                <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr_280px] gap-6 items-start">
-
-                    {/* ═══ COLUMN 1 — Filters ═══ */}
-                    <aside className="hidden xl:block sticky top-24 self-start max-h-[calc(100vh-10rem)] sidebar-scroll pr-1 rounded-lg">
-                        <FiltersColumn />
-                    </aside>
-
-                    {/* ═══ COLUMN 2 — Job Results ═══ */}
-                    <div className="min-w-0">
-
-                        {/* Toolbar */}
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-                            <div className="flex items-center bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-                                {([
-                                    { key: 'all', label: 'All Jobs', icon: <MdWork /> },
-                                    { key: 'recommended', label: 'For You', icon: <IoMdTrendingUp /> },
-                                    { key: 'saved', label: `Saved (${savedJobs.length})`, icon: <FaBookmark /> },
-                                ] as const).map(tab => (
-                                    <button
-                                        key={tab.key}
-                                        onClick={() => setActiveTab(tab.key)}
-                                        className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 text-xs sm:text-[13px] font-medium transition-colors ${activeTab === tab.key
-                                            ? 'bg-[var(--color-primary)] text-white'
-                                            : 'text-gray-500 hover:bg-gray-50'
-                                            }`}
-                                    >
-                                        <span>{tab.icon}</span>
-                                        <span className="hidden sm:inline">{tab.label}</span>
-                                    </button>
-                                ))}
+                        {/* TAB 1: ACTIVE POSTINGS */}
+                        {instTab === 'active-postings' && (
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse text-xs">
+                                        <thead>
+                                            <tr className="bg-slate-50 border-b border-gray-200 text-gray-500 font-bold">
+                                                <th className="p-3.5">Job Title</th>
+                                                <th className="p-3.5">Subject</th>
+                                                <th className="p-3.5">Experience</th>
+                                                <th className="p-3.5">Openings</th>
+                                                <th className="p-3.5">Applicants</th>
+                                                <th className="p-3.5">Deadline</th>
+                                                <th className="p-3.5 text-center">Status</th>
+                                                <th className="p-3.5 text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 font-medium">
+                                            {jobs.map(job => (
+                                                <tr key={job.id} className="hover:bg-slate-50/50">
+                                                    <td className="p-3.5 font-bold text-gray-800">{job.title}</td>
+                                                    <td className="p-3.5 text-gray-600">{job.subject}</td>
+                                                    <td className="p-3.5 text-gray-500">{job.experience}</td>
+                                                    <td className="p-3.5 text-center text-gray-700">{job.openPositions}</td>
+                                                    <td className="p-3.5 text-center text-[var(--color-primary)] font-bold">{job.applicants}</td>
+                                                    <td className="p-3.5 text-gray-500">{new Date(job.deadline).toLocaleDateString()}</td>
+                                                    <td className="p-3.5 text-center">
+                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${job.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                                                            }`}>
+                                                            {job.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-3.5 text-right space-x-1.5">
+                                                        <button
+                                                            onClick={() => handlePauseJob(job)}
+                                                            className="text-2xs font-bold text-gray-500 hover:text-slate-700 bg-slate-100 px-2 py-1 rounded"
+                                                        >
+                                                            {job.status === 'paused' ? 'Resume' : 'Pause'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => { setEditingJob(job); setShowJobCreator(true); }}
+                                                            className="text-2xs font-bold text-[var(--color-primary)] hover:text-blue-700 bg-blue-50 px-2 py-1 rounded"
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteJob(job.id)}
+                                                            className="text-2xs font-bold text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded"
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {jobs.length === 0 && (
+                                                <tr>
+                                                    <td colSpan={8} className="p-8 text-center text-gray-400">No jobs posted yet. Click &ldquo;Post a Job&rdquo; to begin recruiting.</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
+                        )}
 
-                            <div className="flex items-center gap-2">
-                                {/* Mobile filter btn */}
-                                <button
-                                    onClick={() => setShowMobileFilters(true)}
-                                    className="xl:hidden flex items-center gap-1.5 text-[13px] text-[var(--color-primary)] border border-[var(--color-primary)]/30 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors font-medium"
-                                >
-                                    <FaFilter className="text-xs" /> Filters
-                                    {activeFilterCount > 0 && (
-                                        <span className="bg-[var(--color-secondary)] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{activeFilterCount}</span>
+                        {/* TAB 2: APPLICANT TRACKING BOARD */}
+                        {instTab === 'applicants' && (
+                            <div className="flex flex-col gap-4">
+                                {/* Search & filter criteria */}
+                                <div className="bg-white p-3.5 rounded-xl border border-gray-200 shadow-2xs flex gap-3 flex-wrap items-center">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-2xs font-bold text-gray-500 uppercase">Status:</span>
+                                        <select
+                                            value={applicantStatusFilter}
+                                            onChange={e => setApplicantStatusFilter(e.target.value)}
+                                            className="text-xs border border-gray-200 rounded p-1 bg-white outline-none"
+                                        >
+                                            {['All Statuses', 'Applied', 'Viewed', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Selected', 'Rejected'].map(st => (
+                                                <option key={st} value={st}>{st}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-2xs font-bold text-gray-500 uppercase">Experience:</span>
+                                        <select
+                                            value={applicantExpFilter}
+                                            onChange={e => setApplicantExpFilter(e.target.value)}
+                                            className="text-xs border border-gray-200 rounded p-1 bg-white outline-none"
+                                        >
+                                            {['Any Experience', 'Fresher', '1-3 Years', '3-5 Years', '5-10 Years', '10+ Years'].map(ex => (
+                                                <option key={ex} value={ex}>{ex}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-2xs font-bold text-gray-500 uppercase">Subject:</span>
+                                        <select
+                                            value={applicantSubjectFilter}
+                                            onChange={e => setApplicantSubjectFilter(e.target.value)}
+                                            className="text-xs border border-gray-200 rounded p-1 bg-white outline-none"
+                                        >
+                                            {['All Subjects', 'Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Computer Science', 'General', 'Special Education'].map(su => (
+                                                <option key={su} value={su}>{su}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Applicant Grid board */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                    {filteredApplicants.map(app => (
+                                        <div
+                                            key={app.id}
+                                            onClick={() => setSelectedApplicationId(app.id)}
+                                            className="bg-white rounded-xl border border-gray-200 p-4 shadow-2xs hover:shadow hover:border-slate-300 transition cursor-pointer flex flex-col justify-between"
+                                        >
+                                            <div>
+                                                <div className="flex items-start justify-between gap-2.5 mb-2">
+                                                    <div>
+                                                        <h4 className="font-bold text-gray-800 text-xs sm:text-sm">{app.teacherName}</h4>
+                                                        <p className="text-[10px] text-gray-400 font-medium">{app.teacherEmail}</p>
+                                                    </div>
+                                                    <span className="text-[9px] font-black px-2 py-0.5 rounded bg-blue-50 text-[var(--color-primary)] border border-blue-100 flex-shrink-0">
+                                                        {app.matchScore}% Match
+                                                    </span>
+                                                </div>
+
+                                                <div className="border-t border-slate-50 pt-2 pb-1 text-2xs space-y-1 text-gray-500">
+                                                    <div><strong>Job Title:</strong> {app.jobTitle}</div>
+                                                    <div><strong>Applied:</strong> {new Date(app.appliedAt).toLocaleDateString()}</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${app.status === 'Shortlisted' ? 'bg-emerald-100 text-emerald-700' :
+                                                        app.status === 'Interview Scheduled' ? 'bg-purple-100 text-purple-700' :
+                                                            app.status === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
+                                                    }`}>
+                                                    {app.status}
+                                                </span>
+                                                <span className="text-[9px] text-[var(--color-primary)] hover:underline font-bold flex items-center gap-0.5">
+                                                    Open Profile <FaArrowRight className="text-3xs" />
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {filteredApplicants.length === 0 && (
+                                        <div className="col-span-3 bg-white rounded-xl border border-gray-200 p-12 text-center shadow-2xs">
+                                            <FaUserTie className="mx-auto text-4xl text-slate-200 mb-3" />
+                                            <h4 className="font-bold text-gray-700 text-sm">No Applicants Found</h4>
+                                            <p className="text-xs text-gray-400 mt-1">Adjust filters or check back later as educators submit files.</p>
+                                        </div>
                                     )}
-                                </button>
-                                <p className="text-[13px] text-gray-400">
-                                    <span className="font-bold text-[var(--color-primary)]">{filteredJobs.length}</span> jobs found
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB 3: HIRING STATUS SETTINGS */}
+                        {instTab === 'hiring-settings' && (
+                            <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm max-w-xl">
+                                <h3 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                    <FaBuilding className="text-[var(--color-secondary)]" /> Recruiter Branding Details
+                                </h3>
+                                <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+                                    Set your current school status to control badge colors on listings and alert followers regarding hiring campaigns.
                                 </p>
-                            </div>
-                        </div>
 
-                        {/* Active filter tags */}
-                        {activeFilterCount > 0 && (
-                            <div className="flex flex-wrap gap-1.5 mb-3">
-                                {filterSubject !== 'All Subjects' && (
-                                    <span className="flex items-center gap-1 text-[11px] bg-blue-50 text-[var(--color-primary)] px-2.5 py-1 rounded-full font-semibold border border-blue-100">
-                                        {filterSubject}
-                                        <button onClick={() => setFilterSubject('All Subjects')}><FaTimes className="text-[9px]" /></button>
-                                    </span>
+                                {institutionSettings && (
+                                    <div className="space-y-4">
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-[10px] font-bold text-gray-500 uppercase">Hiring Status Badge</span>
+                                            <div className="grid grid-cols-2 gap-3.5">
+                                                {([
+                                                    { key: 'Actively Hiring', color: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+                                                    { key: 'Hiring Soon', color: 'border-blue-200 bg-blue-50 text-blue-700' },
+                                                    { key: 'Position Filled', color: 'border-slate-200 bg-slate-50 text-slate-700' },
+                                                    { key: 'Recruitment Closed', color: 'border-red-200 bg-red-50 text-red-700' }
+                                                ] as const).map(badge => (
+                                                    <button
+                                                        key={badge.key}
+                                                        onClick={() => handleInstitutionHiringUpdate(badge.key)}
+                                                        className={`p-3 text-xs font-bold border rounded-xl text-center transition-all ${institutionSettings.hiringStatus === badge.key
+                                                                ? `${badge.color} border-2 shadow-sm`
+                                                                : 'border-gray-200 hover:bg-slate-50 text-gray-600'
+                                                            }`}
+                                                    >
+                                                        {badge.key}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
                                 )}
-                                {filterBoard !== 'All Boards' && (
-                                    <span className="flex items-center gap-1 text-[11px] bg-blue-50 text-[var(--color-primary)] px-2.5 py-1 rounded-full font-semibold border border-blue-100">
-                                        {filterBoard}
-                                        <button onClick={() => setFilterBoard('All Boards')}><FaTimes className="text-[9px]" /></button>
-                                    </span>
-                                )}
-                                {filterExp !== 'Any Experience' && (
-                                    <span className="flex items-center gap-1 text-[11px] bg-blue-50 text-[var(--color-primary)] px-2.5 py-1 rounded-full font-semibold border border-blue-100">
-                                        {filterExp}
-                                        <button onClick={() => setFilterExp('Any Experience')}><FaTimes className="text-[9px]" /></button>
-                                    </span>
-                                )}
-                                {filterType !== 'All Types' && (
-                                    <span className="flex items-center gap-1 text-[11px] bg-blue-50 text-[var(--color-primary)] px-2.5 py-1 rounded-full font-semibold border border-blue-100">
-                                        {filterType}
-                                        <button onClick={() => setFilterType('All Types')}><FaTimes className="text-[9px]" /></button>
-                                    </span>
-                                )}
-                                {filterSalary !== 'Any Salary' && (
-                                    <span className="flex items-center gap-1 text-[11px] bg-blue-50 text-[var(--color-primary)] px-2.5 py-1 rounded-full font-semibold border border-blue-100">
-                                        {filterSalary}
-                                        <button onClick={() => setFilterSalary('Any Salary')}><FaTimes className="text-[9px]" /></button>
-                                    </span>
-                                )}
-                                <button onClick={resetFilters} className="text-[11px] text-red-400 hover:text-red-600 font-semibold px-2">
-                                    Clear All
-                                </button>
                             </div>
                         )}
 
-                        {/* Job Cards — single column in the middle */}
-                        {filteredJobs.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {filteredJobs.map((job, i) => (
-                                    <JobCard
-                                        key={job.id} job={job} index={i}
-                                        saved={savedJobs.includes(job.id)} onToggleSave={toggleSave}
-                                    />
-                                ))}
-                            </div>
-                        ) : (
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
-                                className="bg-white rounded-lg border border-gray-200 py-16 text-center"
-                            >
-                                <FaChalkboardTeacher className="mx-auto text-5xl text-gray-200 mb-3" />
-                                <h3 className="text-base font-semibold text-gray-400">No jobs found</h3>
-                                <p className="text-sm text-gray-300 mt-1">Try adjusting your filters or search terms.</p>
-                                <button
-                                    onClick={resetFilters}
-                                    className="mt-4 bg-[var(--color-primary)] text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-[var(--color-secondary)] transition-colors"
-                                >
-                                    Reset Filters
-                                </button>
-                            </motion.div>
-                        )}
-
-                        {/* Load More */}
-                        {filteredJobs.length > 0 && (
-                            <div className="mt-5 flex justify-center">
-                                <button className="flex items-center gap-2 text-[13px] font-semibold text-[var(--color-primary)] border border-[var(--color-primary)]/30 px-6 py-2.5 rounded-lg hover:bg-[var(--color-primary)] hover:text-white transition-all duration-200">
-                                    Load More Jobs <IoMdTrendingUp />
-                                </button>
-                            </div>
-                        )}
                     </div>
+                )}
 
-                    {/* ═══ COLUMN 3 — Innovative Right Panel ═══ */}
-                    <aside className="hidden xl:block sticky top-24 self-start max-h-[calc(100vh-10rem)] sidebar-scroll pr-1 rounded-lg">
-                        <RightPanel />
-                    </aside>
-                </div>
-            </section>
+            </main>
 
-            {/* ── Mobile Filter Drawer ── */}
+            <Footer />
+
+            {/* ── POPUPS & MODALS ── */}
+
+            {/* Quick Apply Confirmation Modal */}
             <AnimatePresence>
-                {showMobileFilters && (
-                    <>
+                {applyingJob && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-2xs p-4">
                         <motion.div
-                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-40 bg-black/40 xl:hidden"
-                            onClick={() => setShowMobileFilters(false)}
-                        />
-                        <motion.div
-                            initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
-                            transition={{ type: 'spring', damping: 26, stiffness: 260 }}
-                            className="fixed top-0 left-0 z-50 h-full w-80 bg-white shadow-2xl overflow-y-auto xl:hidden"
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-5 border border-gray-100 space-y-4"
                         >
-                            <div className="flex items-center justify-between p-4 border-b border-gray-100 sticky top-0 bg-white z-10">
-                                <h2 className="font-bold text-[var(--color-primary)] flex items-center gap-2 text-sm">
-                                    <FaFilter /> Filter Jobs
-                                </h2>
-                                <button onClick={() => setShowMobileFilters(false)} className="text-gray-400 hover:text-gray-600">
+                            <div className="flex justify-between items-start">
+                                <h3 className="font-bold text-gray-800 text-sm sm:text-base">Confirm Job Application</h3>
+                                <button onClick={() => setApplyingJob(null)} className="text-gray-400 hover:text-gray-600">
                                     <FaTimes />
                                 </button>
                             </div>
-                            <div className="p-4">
-                                <FiltersColumn />
+
+                            <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                                <div className="text-xs font-bold text-gray-700 leading-snug">{applyingJob.title}</div>
+                                <div className="text-[10px] text-gray-400 mt-0.5">{applyingJob.school} • {applyingJob.location}</div>
+                            </div>
+
+                            {/* Resume attachment verify */}
+                            <div className="flex items-center justify-between text-2xs p-2 border border-green-100 bg-green-50/50 rounded-lg">
+                                <span className="flex items-center gap-1.5 text-green-700 font-semibold">
+                                    <FaCheckCircle /> Attachment: {resumeData?.fileName}
+                                </span>
+                                <span className="text-gray-400 font-medium">Strength: {resumeData?.strengthScore}%</span>
+                            </div>
+
+                            {/* Optional Cover letter text */}
+                            <div className="flex flex-col gap-1">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase">Optional Cover Letter</label>
+                                <textarea
+                                    value={coverLetterInput}
+                                    onChange={e => setCoverLetterInput(e.target.value)}
+                                    placeholder="Introduce yourself, e.g. Dear hiring manager, I am passionate about High School Calculus teaching..."
+                                    rows={3}
+                                    className="text-xs border border-gray-200 rounded-lg p-2 Outline-none resize-none focus:border-[var(--color-primary)] transition bg-slate-50/50"
+                                />
+                            </div>
+
+                            <div className="pt-2 flex items-center justify-end gap-3 text-xs">
+                                <button
+                                    onClick={() => setApplyingJob(null)}
+                                    className="font-bold text-gray-500 hover:text-gray-700 px-3 py-1.5 hover:bg-slate-100 rounded-lg transition"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleConfirmApply}
+                                    className="bg-[var(--color-primary)] hover:bg-[var(--color-secondary)] text-white font-bold px-5 py-2 rounded-lg shadow-sm transition"
+                                >
+                                    Submit Application
+                                </button>
                             </div>
                         </motion.div>
-                    </>
+                    </div>
                 )}
             </AnimatePresence>
-            <Footer />
+
+            {/* Job Creator modal */}
+            <JobCreatorModal
+                isOpen={showJobCreator}
+                editingJob={editingJob}
+                onClose={() => { setShowJobCreator(false); setEditingJob(null); }}
+                onJobCreated={loadData}
+            />
+
+            {/* Recruiter Review modal */}
+            {selectedApplicationId && (
+                <ApplicantDetailsModal
+                    isOpen={!!selectedApplicationId}
+                    applicationId={selectedApplicationId}
+                    onClose={() => setSelectedApplicationId(null)}
+                    onStatusChanged={loadData}
+                />
+            )}
+
+            {/* Notification Drawer panel */}
+            <NotificationCenter
+                isOpen={showNotifications}
+                userId={viewMode === 'teacher' ? DUMMY_TEACHER_ID : DUMMY_INSTITUTION_ID}
+                onClose={() => setShowNotifications(false)}
+                unreadCountChange={setUnreadNotifsCount}
+            />
+
         </div>
     );
 }

@@ -3,6 +3,8 @@
 import React, { useCallback } from 'react';
 import Image from 'next/image';
 import { JitsiMeeting } from '@jitsi/react-sdk';
+import { LiveKitRoom, VideoConference, RoomAudioRenderer } from '@livekit/components-react';
+import '@livekit/components-styles';
 import { motion, AnimatePresence } from 'framer-motion';
 import { HiX, HiLink, HiCheck, HiMinus, HiChevronUp, HiVideoCamera, HiStop } from 'react-icons/hi';
 
@@ -23,6 +25,48 @@ const VirtualClassMeetModal: React.FC<VirtualClassMeetModalProps> = ({ isOpen, o
     const [isChatOpen, setIsChatOpen] = React.useState(false);
     const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
     const chunksRef = React.useRef<Blob[]>([]);
+
+    const [livekitToken, setLivekitToken] = React.useState<string>('');
+    const [livekitError, setLivekitError] = React.useState<string>('');
+    const [loadingToken, setLoadingToken] = React.useState<boolean>(false);
+
+    const provider = process.env.NEXT_PUBLIC_VIDEO_PROVIDER || 'jitsi';
+
+    React.useEffect(() => {
+        if (!isOpen) {
+            setLivekitToken('');
+            setLivekitError('');
+        }
+    }, [isOpen]);
+
+    React.useEffect(() => {
+        if (!isOpen || provider !== 'livekit') return;
+
+        const fetchToken = async () => {
+            setLoadingToken(true);
+            setLivekitError('');
+            try {
+                const response = await fetch(`/api/livekit/token?room=${roomName}&username=${encodeURIComponent(displayName)}`);
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || 'Failed to fetch token');
+                }
+                const data = await response.json();
+                if (data.token) {
+                    setLivekitToken(data.token);
+                } else {
+                    setLivekitError(data.error || 'Failed to fetch token');
+                }
+            } catch (err) {
+                setLivekitError((err as Error).message || 'Failed to fetch video call token');
+                console.error(err);
+            } finally {
+                setLoadingToken(false);
+            }
+        };
+
+        fetchToken();
+    }, [isOpen, roomName, displayName, provider]);
 
     const startRecording = async () => {
         try {
@@ -98,10 +142,10 @@ const VirtualClassMeetModal: React.FC<VirtualClassMeetModalProps> = ({ isOpen, o
     }, []);
 
     React.useEffect(() => {
-        if (!isOpen) return;
+        if (!isOpen || provider !== 'jitsi') return;
         const interval = setInterval(hideWatermark, 1000); // Check every second
         return () => clearInterval(interval);
-    }, [isOpen, hideWatermark]);
+    }, [isOpen, hideWatermark, provider]);
 
     // 2. Browser Reload Confirmation Popup
     React.useEffect(() => {
@@ -278,113 +322,151 @@ const VirtualClassMeetModal: React.FC<VirtualClassMeetModalProps> = ({ isOpen, o
                                 </div>
                             )}
 
-                            <JitsiMeeting
-                                domain="meet.jit.si"
-                                roomName={roomName}
-                                configOverwrite={{
-                                    startWithAudioMuted: true,
-                                    disableModeratorIndicator: false,
-                                    startScreenSharing: true,
-                                    enableEmailInStats: false,
-                                    prejoinPageEnabled: false,
-                                    enableRecording: true,
-                                    fileRecordingsEnabled: true,
-                                    fileRecordingsServiceEnabled: true,
-                                    recordingServiceEnabled: true,
-                                    localRecording: {
-                                        enabled: true,
-                                        disable: false,
-                                        format: 'mp4',
-                                    },
-                                    whiteboard: {
-                                        enabled: true
-                                    },
-                                    toolbarButtons: [
-                                        'microphone', 'camera', 'closedcaptions', 'desktop', 'fullscreen',
-                                        'fodeviceselection', 'hangup', 'profile', 'chat', 'recording', 'local-recording',
-                                        'livestreaming', 'etherpad', 'sharedvideo', 'settings', 'raisehand',
-                                        'videoquality', 'filmstrip', 'feedback', 'stats', 'shortcuts',
-                                        'tileview', 'videobackgroundblur', 'download', 'help', 'mute-everyone',
-                                        'security', 'whiteboard'
-                                    ],
-                                    disableThirdPartyRequests: true,
-                                    enableInsecureRoomNameWarning: false,
-                                    giphy: {
-                                        enabled: false
-                                    },
-                                    disableRecordAudioNotification: true,
-                                    readOnlyName: true,
-                                    chromeExtensionBanner: {
-                                        disable: true,
-                                    },
-                                    disableDeepLinking: true,
-                                    doNotStoreRoom: true,
-                                    logoImageUrl: '',
-                                    logoClickUrl: 'https://teachers-desk.app',
-                                    defaultLocalDisplayName: 'Teacher',
-                                    defaultRemoteDisplayName: 'Student',
-                                    disableSelfViewSettings: true,
-                                    brandingDataUrl: '',
-                                    dynamicBrandingUrl: '',
-                                    hideLander: true,
-                                    branding: {
-                                        logoUrl: '',
+                            {provider === 'livekit' ? (
+                                <div className="w-full h-full bg-gray-900 flex flex-col items-center justify-center relative">
+                                    {loadingToken ? (
+                                        <div className="flex flex-col items-center gap-3">
+                                            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[var(--color-primary)]"></div>
+                                            <p className="text-white text-sm font-medium">Connecting to secure video classroom...</p>
+                                        </div>
+                                    ) : livekitError ? (
+                                        <div className="text-center p-6 bg-red-950/20 rounded-xl border border-red-500/30 max-w-sm w-full mx-4 shadow-xl">
+                                            <div className="w-12 h-12 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                <HiX className="text-2xl" />
+                                            </div>
+                                            <p className="text-red-400 font-bold mb-1">Connection Error</p>
+                                            <p className="text-gray-400 text-xs mb-6 leading-relaxed">{livekitError}</p>
+                                            <button
+                                                onClick={onClose}
+                                                className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-sm transition-all shadow-lg shadow-red-200"
+                                            >
+                                                Close Window
+                                            </button>
+                                        </div>
+                                    ) : livekitToken ? (
+                                        <LiveKitRoom
+                                            video={true}
+                                            audio={true}
+                                            token={livekitToken}
+                                            serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
+                                            data-lk-theme="default"
+                                            style={{ height: '100%', width: '100%' }}
+                                            onDisconnected={onClose}
+                                        >
+                                            <VideoConference />
+                                            <RoomAudioRenderer />
+                                        </LiveKitRoom>
+                                    ) : null}
+                                </div>
+                            ) : (
+                                <JitsiMeeting
+                                    domain="meet.jit.si"
+                                    roomName={roomName}
+                                    configOverwrite={{
+                                        startWithAudioMuted: true,
+                                        disableModeratorIndicator: false,
+                                        startScreenSharing: true,
+                                        enableEmailInStats: false,
+                                        prejoinPageEnabled: false,
+                                        enableRecording: true,
+                                        fileRecordingsEnabled: true,
+                                        fileRecordingsServiceEnabled: true,
+                                        recordingServiceEnabled: true,
+                                        localRecording: {
+                                            enabled: true,
+                                            disable: false,
+                                            format: 'mp4',
+                                        },
+                                        whiteboard: {
+                                            enabled: true
+                                        },
+                                        toolbarButtons: [
+                                            'microphone', 'camera', 'closedcaptions', 'desktop', 'fullscreen',
+                                            'fodeviceselection', 'hangup', 'profile', 'chat', 'recording', 'local-recording',
+                                            'livestreaming', 'etherpad', 'sharedvideo', 'settings', 'raisehand',
+                                            'videoquality', 'filmstrip', 'feedback', 'stats', 'shortcuts',
+                                            'tileview', 'videobackgroundblur', 'download', 'help', 'mute-everyone',
+                                            'security', 'whiteboard'
+                                        ],
+                                        disableThirdPartyRequests: true,
+                                        enableInsecureRoomNameWarning: false,
+                                        giphy: {
+                                            enabled: false
+                                        },
+                                        disableRecordAudioNotification: true,
+                                        readOnlyName: true,
+                                        chromeExtensionBanner: {
+                                            disable: true,
+                                        },
+                                        disableDeepLinking: true,
+                                        doNotStoreRoom: true,
+                                        logoImageUrl: '',
                                         logoClickUrl: 'https://teachers-desk.app',
-                                    },
-                                    disableRemoteControl: true,
-                                    p2p: { enabled: true },
-                                    conferenceInfo: {
-                                        alwaysVisible: ['recording', 'local-recording'],
-                                        autoHide: ['subject', 'participants-count']
-                                    },
-                                }}
-                                interfaceConfigOverwrite={{
-                                    APP_NAME: 'TeacherDesk',
-                                    NATIVE_APP_NAME: 'TeacherDesk',
-                                    SHOW_JITSI_WATERMARK: false,
-                                    SHOW_WATERMARK_FOR_GUESTS: false,
-                                    HIDE_WATERMARK_FOR_GUESTS: true,
-                                    SHOW_BRAND_WATERMARK: false,
-                                    SHOW_POWERED_BY: false,
-                                    SHOW_PROMOTIONAL_CLOSE_PAGE: false,
-                                    HIDE_DEEP_LINKING_LOGO: true,
-                                    MOBILE_APP_PROMO: false,
-                                    ENABLE_FEEDBACK_ANIMATION: false,
-                                    DISABLE_FOCUS_INDICATOR: true,
-                                    VIDEO_QUALITY_LABEL_DISABLED: true,
-                                    HIDE_INVITE_ON_WELCOME_PAGE: true,
-                                    DISABLE_TRANSCRIPTION_SUBTITLES: true,
-                                    ENABLE_DIAL_OUT: false,
-                                    RECENT_LIST_ENABLED: false,
-                                    GENERATE_ROOMNAMES_ON_WELCOME_PAGE: false,
-                                    DISPLAY_WELCOME_PAGE_CONTENT: false,
-                                    DISPLAY_WELCOME_PAGE_TOOLBAR_ADDITIONAL_CONTENT: false,
-                                    ENABLE_WATERMARK: false,
-                                    HIDE_WATERMARK_ON_MOBILE: true,
-                                    POLICY_LOGO_24DP: '',
-                                    DISABLE_JOIN_LEAVE_NOTIFICATIONS: true,
-                                    SHOW_CHROME_EXTENSION_BANNER: false,
-                                    SHOW_INVITE_TO_PARTICIPANTS_AD: false,
-                                    DISABLE_PRESENCE_STATUS_DISPLAY: true,
-                                    DEFAULT_LOGO_URL: '',
-                                    JITSIMEET_LOGO_URL: '',
-                                    WATERMARK_LOGO_URL: '',
-                                    BRAND_WATERMARK_LINK: 'https://teachers-desk.app',
-                                    JITSI_WATERMARK_LINK: 'https://teachers-desk.app',
-                                    DYNAMIC_BRANDING_URL: '',
-                                }}
-                                userInfo={{
-                                    displayName: displayName,
-                                    email: '',
-                                }}
-                                onApiReady={handleApiReady}
-                                getIFrameRef={(iframeRef) => {
-                                    iframeRef.style.height = '100%';
-                                    iframeRef.style.width = '100%';
-                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                    (iframeRefRef as any).current = iframeRef;
-                                }}
-                            />
+                                        defaultLocalDisplayName: 'Teacher',
+                                        defaultRemoteDisplayName: 'Student',
+                                        disableSelfViewSettings: true,
+                                        brandingDataUrl: '',
+                                        dynamicBrandingUrl: '',
+                                        hideLander: true,
+                                        branding: {
+                                            logoUrl: '',
+                                            logoClickUrl: 'https://teachers-desk.app',
+                                        },
+                                        disableRemoteControl: true,
+                                        p2p: { enabled: true },
+                                        conferenceInfo: {
+                                            alwaysVisible: ['recording', 'local-recording'],
+                                            autoHide: ['subject', 'participants-count']
+                                        },
+                                    }}
+                                    interfaceConfigOverwrite={{
+                                        APP_NAME: 'TeacherDesk',
+                                        NATIVE_APP_NAME: 'TeacherDesk',
+                                        SHOW_JITSI_WATERMARK: false,
+                                        SHOW_WATERMARK_FOR_GUESTS: false,
+                                        HIDE_WATERMARK_FOR_GUESTS: true,
+                                        SHOW_BRAND_WATERMARK: false,
+                                        SHOW_POWERED_BY: false,
+                                        SHOW_PROMOTIONAL_CLOSE_PAGE: false,
+                                        HIDE_DEEP_LINKING_LOGO: true,
+                                        MOBILE_APP_PROMO: false,
+                                        ENABLE_FEEDBACK_ANIMATION: false,
+                                        DISABLE_FOCUS_INDICATOR: true,
+                                        VIDEO_QUALITY_LABEL_DISABLED: true,
+                                        HIDE_INVITE_ON_WELCOME_PAGE: true,
+                                        DISABLE_TRANSCRIPTION_SUBTITLES: true,
+                                        ENABLE_DIAL_OUT: false,
+                                        RECENT_LIST_ENABLED: false,
+                                        GENERATE_ROOMNAMES_ON_WELCOME_PAGE: false,
+                                        DISPLAY_WELCOME_PAGE_CONTENT: false,
+                                        DISPLAY_WELCOME_PAGE_TOOLBAR_ADDITIONAL_CONTENT: false,
+                                        ENABLE_WATERMARK: false,
+                                        HIDE_WATERMARK_ON_MOBILE: true,
+                                        POLICY_LOGO_24DP: '',
+                                        DISABLE_JOIN_LEAVE_NOTIFICATIONS: true,
+                                        SHOW_CHROME_EXTENSION_BANNER: false,
+                                        SHOW_INVITE_TO_PARTICIPANTS_AD: false,
+                                        DISABLE_PRESENCE_STATUS_DISPLAY: true,
+                                        DEFAULT_LOGO_URL: '',
+                                        JITSIMEET_LOGO_URL: '',
+                                        WATERMARK_LOGO_URL: '',
+                                        BRAND_WATERMARK_LINK: 'https://teachers-desk.app',
+                                        JITSI_WATERMARK_LINK: 'https://teachers-desk.app',
+                                        DYNAMIC_BRANDING_URL: '',
+                                    }}
+                                    userInfo={{
+                                        displayName: displayName,
+                                        email: '',
+                                    }}
+                                    onApiReady={handleApiReady}
+                                    getIFrameRef={(iframeRef) => {
+                                        iframeRef.style.height = '100%';
+                                        iframeRef.style.width = '100%';
+                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                        (iframeRefRef as any).current = iframeRef;
+                                    }}
+                                />
+                            )}
                         </div>
 
                         {/* Attendance Tracker Badge */}

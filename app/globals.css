@@ -307,3 +307,33 @@ footer {
   scrollbar-width: none;  /* Firefox */
 }
 
+/* ─── Feed Filter Bar: responsive dual-mode ─────────────────────────────── */
+
+/* Mobile-first: 3-column emoji card grid */
+.feed-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+/* Hide pill row on mobile */
+.feed-filter-pills {
+  display: none;
+}
+
+/* Tablet and up (≥ 640px): pill row visible, card grid hidden */
+@media (min-width: 640px) {
+  .feed-filter-grid {
+    display: none;
+  }
+
+  .feed-filter-pills {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    padding-bottom: 4px;
+  }
+}
+
+

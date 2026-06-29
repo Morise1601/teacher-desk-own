@@ -53,7 +53,8 @@ const INSTITUTIONS = [
     }
 ];
 
-export default function NoticeBoard() {
+export default function NoticeBoard({ institutions }: { institutions?: any[] }) {
+    const list = institutions || INSTITUTIONS;
     const scrollRef = useRef<HTMLDivElement>(null);
     const [isHovered, setIsHovered] = useState(false);
 
@@ -108,7 +109,7 @@ export default function NoticeBoard() {
                 ref={scrollRef}
                 className="flex gap-4 pb-4 px-1 overflow-x-auto snap-x snap-mandatory custom-scrollbar-thin sidebar-scroll scroll-smooth"
             >
-                {INSTITUTIONS.map((inst, idx) => (
+                {list.map((inst, idx) => (
                     <motion.div
                         key={inst.id}
                         initial={{ opacity: 0, scale: 0.9 }}

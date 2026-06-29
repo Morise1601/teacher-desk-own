@@ -17,7 +17,8 @@ import {
   User as UserIcon,
   Settings,
   Ban,
-  Send
+  Send,
+  Tag
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
@@ -87,6 +88,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
     { href: '/dashboard/super-admin/reports', icon: <HiOutlineExclamationCircle />, label: 'Reports' },
     { href: '/dashboard/super-admin/reports/blocked', icon: <Ban size={18} />, label: 'Blocked Users' },
     { href: '/dashboard/super-admin/courses', icon: <Command />, label: 'Courses' },
+    { href: '/dashboard/super-admin/pricing', icon: <Tag size={18} />, label: 'Pricing' },
     { href: '/dashboard/super-admin/settings', icon: <Settings />, label: 'Settings' },
   ];
 
