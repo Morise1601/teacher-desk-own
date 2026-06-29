@@ -11,7 +11,8 @@ const topProfiles = [
     { id: 4, name: 'Bill Gates', role: 'C & C++ Developer', avatar: '/images/avatar-top4.jpg' },
 ];
 
-export default function TopProfilesList() {
+export default function TopProfilesList({ profiles }: { profiles?: any[] }) {
+    const list = profiles || topProfiles;
     return (
         <motion.div
             className="bg-white rounded-lg shadow-md p-4 border border-gray-200"
@@ -19,7 +20,7 @@ export default function TopProfilesList() {
         >
             <h3 className="font-semibold text-lg text-gray-800 mb-4">Top Profiles</h3>
             <div className="grid grid-cols-2 gap-4">
-                {topProfiles.map(profile => (
+                {list.map(profile => (
                     <motion.div
                         key={profile.id}
                         className="flex flex-col items-center text-center p-3 rounded-md bg-gray-50"

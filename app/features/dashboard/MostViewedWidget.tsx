@@ -10,7 +10,8 @@ const mostViewedItems = [
     { id: 2, title: 'UX Designer', rate: '$25/hr', avatar: '/images/avatar-mv2.jpg' }, // Dummy image
 ];
 
-export default function MostViewedWidget() {
+export default function MostViewedWidget({ items }: { items?: any[] }) {
+    const list = items || mostViewedItems;
     return (
         <motion.div
             className="bg-white p-4 rounded-lg shadow-md border border-gray-200"
@@ -18,7 +19,7 @@ export default function MostViewedWidget() {
         >
             <h3 className="font-semibold text-lg text-gray-800 mb-4">Most Viewed This Week</h3>
             <ul className="space-y-4">
-                {mostViewedItems.map(item => (
+                {list.map(item => (
                     <motion.li
                         key={item.id}
                         className="flex items-center gap-3"

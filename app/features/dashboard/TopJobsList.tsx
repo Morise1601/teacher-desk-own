@@ -11,7 +11,8 @@ const topJobs = [
     { id: 5, title: 'Senior Developer Designer', rate: '$25/hr', description: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.' },
 ];
 
-export default function TopJobsList() {
+export default function TopJobsList({ jobs }: { jobs?: any[] }) {
+    const list = jobs || topJobs;
     return (
         <motion.div
             className="bg-white p-4 rounded-lg shadow-md border border-gray-200"
@@ -19,7 +20,7 @@ export default function TopJobsList() {
         >
             <h3 className="font-semibold text-lg text-gray-800 mb-4">Top Jobs</h3>
             <ul className="space-y-4">
-                {topJobs.map(job => (
+                {list.map(job => (
                     <motion.li
                         key={job.id}
                         className="pb-2 border-b border-gray-100 last:border-b-0"

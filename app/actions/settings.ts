@@ -111,3 +111,93 @@ export async function setGoogleAuthSettingsAction(encryptedPayload: string) {
     return encryptData({ success: false, message: `System error: ${err.message}` });
   }
 }
+
+/**
+ * Fetch Stripe configuration settings.
+ */
+export async function getStripeSettingsAction() {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('system_settings')
+      .select('key, value')
+      .in('key', [
+        'stripe_publishable_key',
+        'stripe_secret_key',
+        'stripe_webhook_secret'
+      ]);
+
+    if (error) throw error;
+
+    const settings: Record<string, string> = {};
+    (data || []).forEach((item: { key: string; value: string }) => {
+      settings[item.key] = item.value;
+    });
+
+    return encryptData({
+      success: true,
+      settings: {
+        stripe_publishable_key: settings.stripe_publishable_key || '',
+        stripe_secret_key: settings.stripe_secret_key || '',
+        stripe_webhook_secret: settings.stripe_webhook_secret || ''
+      }
+    });
+  } catch (err: any) {
+    console.error("❌ [GET STRIPE SETTINGS ERROR]:", err.message);
+    return encryptData({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Set Stripe configuration settings.
+ */
+export async function setStripeSettingsAction(encryptedPayload: string) {
+  try {
+    const payload = decryptData(encryptedPayload);
+    if (!payload || !payload.userId) {
+      return encryptData({ success: false, message: "Unauthorized: Missing identity metadata." });
+    }
+
+    // 1. SECURITY VALIDATION: Ensure the user is actually a Super Admin
+    const { data: adminCheck, error: adminErr } = await supabaseAdmin
+      .from('super_admins')
+      .select('role_type')
+      .eq('auth_id', payload.userId)
+      .maybeSingle();
+
+    if (adminErr || !adminCheck || (adminCheck.role_type !== 'super_admin' && adminCheck.role_type !== 'admin')) {
+      console.warn(`⚠️ [SECURITY ALERT]: Unauthorized attempt to modify Stripe settings by user ${payload.userId}`);
+      return encryptData({ success: false, message: "Security exception: Insufficient permissions." });
+    }
+
+    // 2. DATA VALIDATIONS
+    const publishableKey = payload.stripe_publishable_key?.trim() || '';
+    const secretKey = payload.stripe_secret_key?.trim() || '';
+    const webhookSecret = payload.stripe_webhook_secret?.trim() || '';
+
+    // 3. UPSERT Configuration Keys in system_settings
+    const settingsToSave = [
+      { key: 'stripe_publishable_key', value: publishableKey },
+      { key: 'stripe_secret_key', value: secretKey },
+      { key: 'stripe_webhook_secret', value: webhookSecret }
+    ];
+
+    for (const setting of settingsToSave) {
+      const { error } = await supabaseAdmin
+        .from('system_settings')
+        .upsert({ 
+          key: setting.key, 
+          value: setting.value, 
+          updated_at: new Date().toISOString() 
+        }, { onConflict: 'key' });
+
+      if (error) throw error;
+    }
+
+    console.log(`✅ [SETTINGS UPDATE]: Stripe configuration settings updated by Admin ${payload.userId}`);
+    return encryptData({ success: true, message: "Stripe configuration updated successfully!" });
+  } catch (err: any) {
+    console.error("❌ [SET STRIPE SETTINGS ERROR]:", err.message);
+    return encryptData({ success: false, message: `System error: ${err.message}` });
+  }
+}
+

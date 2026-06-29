@@ -188,11 +188,43 @@ export async function getInstitutionProfileAction(authId: string) {
     }
 
     // 2. Fetch from profiles table for extra info (about, logo, etc)
-    const { data: profData } = await supabase
+    let { data: profData } = await supabaseAdmin
       .from('profiles')
       .select('about, profile_pic_url, location')
       .eq('user_id', authId)
-      .single();
+      .maybeSingle();
+
+    if (!profData && instData) {
+      console.log(`ℹ️ [AUTO PROFILE CREATION]: Initializing profile for institution ${authId}`);
+      const initialProfile = {
+        user_id: authId,
+        role: instData.role_type || 'institution_admin',
+        headline: '',
+        about: instData.about || '',
+        location: instData.address || '',
+        profile_pic_url: '',
+        experience: [],
+        education: [],
+        skills: [],
+        specializations: [],
+        volunteering: [],
+        languages: [],
+        interests: [],
+        papers_presented: []
+      };
+
+      const { data: newProfile, error: createError } = await supabaseAdmin
+        .from('profiles')
+        .insert([initialProfile])
+        .select('about, profile_pic_url, location')
+        .single();
+
+      if (createError) {
+        console.error("❌ [DB INITIALIZE INSTITUTION PROFILE ERROR]:", createError.message);
+      } else {
+        profData = newProfile;
+      }
+    }
 
     // 3. MERGE
     const mergedData = {
