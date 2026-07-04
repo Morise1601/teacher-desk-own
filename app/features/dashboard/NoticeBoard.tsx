@@ -64,10 +64,17 @@ export default function NoticeBoard({ institutions }: { institutions?: any[] }) 
             interval = setInterval(() => {
                 if (scrollRef.current) {
                     const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
-                    if (scrollLeft + clientWidth >= scrollWidth - 10) {
+                    const isAtEnd = scrollLeft + clientWidth >= scrollWidth - 15;
+                    if (isAtEnd) {
                         scrollRef.current.scrollTo({ left: 0, behavior: 'smooth' });
                     } else {
-                        scrollRef.current.scrollBy({ left: 270, behavior: 'smooth' });
+                        const prevScrollLeft = scrollRef.current.scrollLeft;
+                        scrollRef.current.scrollBy({ left: 275, behavior: 'smooth' });
+                        setTimeout(() => {
+                            if (scrollRef.current && scrollRef.current.scrollLeft === prevScrollLeft && prevScrollLeft > 0) {
+                                scrollRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+                            }
+                        }, 500);
                     }
                 }
             }, 3000);

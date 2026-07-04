@@ -9,6 +9,8 @@ import {
   FaCompass, FaArrowLeft, FaUniversity, FaSync, FaSearchPlus, FaExclamationCircle
 } from 'react-icons/fa';
 
+import { countries as staticCountries } from '@/lib/countries';
+
 const MapComponent = dynamic(() => import('./MapComponent'), {
   ssr: false,
   loading: () => (
@@ -22,13 +24,14 @@ interface MapPickerProps {
   onLocationSelect: (address: string) => void;
   onSelect?: (data: { name: string; address: string }) => void;
   onClose: () => void;
+  title?: string;
 }
 
 type Step = 'location' | 'institution';
 
-export default function MapPicker({ onLocationSelect, onSelect, onClose }: MapPickerProps) {
+export default function MapPicker({ onLocationSelect, onSelect, onClose, title }: MapPickerProps) {
   const [activeStep, setActiveStep] = useState<Step>('location');
-  const [countries, setCountries] = useState<any[]>([]);
+  const [countries, setCountries] = useState<any[]>(staticCountries);
   const [selectedCountry, setSelectedCountry] = useState<any>(null);
   const [selectedState, setSelectedState] = useState<string>('');
   const [selectedCity, setSelectedCity] = useState<string>('');
@@ -48,7 +51,6 @@ export default function MapPicker({ onLocationSelect, onSelect, onClose }: MapPi
 
   useEffect(() => {
     setMounted(true);
-    fetchCountries();
   }, []);
 
   const safeFetch = async (url: string, options?: RequestInit) => {
@@ -61,15 +63,6 @@ export default function MapPicker({ onLocationSelect, onSelect, onClose }: MapPi
     } catch (err: any) {
       return { _error: true };
     }
-  };
-
-  const fetchCountries = async () => {
-    setDataLoading(true);
-    const data = await safeFetch('https://restcountries.com/v3.1/all?fields=name,cca2');
-    if (data && !data._error) {
-        setCountries(data.sort((a: any, b: any) => a.name.common.localeCompare(b.name.common)));
-    }
-    setDataLoading(false);
   };
 
   const fetchRegions = async (countryName: string) => {
@@ -205,7 +198,7 @@ export default function MapPicker({ onLocationSelect, onSelect, onClose }: MapPi
         <div className="w-full md:w-[360px] h-full bg-slate-50/50 border-r border-slate-100 flex flex-col z-20 backdrop-blur-md">
           <div className="p-6 bg-white/95 border-b border-slate-100">
             <div className="flex justify-between items-center mb-4">
-               <h3 className="text-xl font-bold text-slate-800 oswald-font tracking-tight capitalize">Campus Locator</h3>
+               <h3 className="text-xl font-bold text-slate-800 oswald-font tracking-tight capitalize">{title || "Campus Locator"}</h3>
                <button type="button" onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-all text-slate-400"><FaTimes size={16} /></button>
             </div>
 

@@ -12,7 +12,7 @@ import PostJobCreator from '@/app/features/dashboard/PostJobCreator'; //
 import UserFeed from '@/app/features/dashboard/UserFeed'; //
 import TopProfilesList from '@/app/features/dashboard/TopProfilesList'; //
 import TopJobsList from '@/app/features/dashboard/TopJobsList'; //
-import MostViewedWidget from '@/app/features/dashboard/MostViewedWidget'; //
+import FeedFilters, { FeedFilterType, FeedSortType } from '@/app/features/dashboard/FeedFilters';
 import CalendarSchedulerWidget from '@/app/features/dashboard/CalendarSchedulerWidget'; //
 import NoticeBoard from '@/app/features/dashboard/NoticeBoard'; //
 import TeacherInviteCard from '@/app/features/dashboard/TeacherInviteCard';
@@ -38,6 +38,8 @@ const DashboardPage = () => {
     const [userData, setUserData] = useState<{ id: string; role: string } | null>(null);
     const [dashboardData, setDashboardData] = useState<any>(null);
     const [mobileTab, setMobileTab] = useState<'feed' | 'desk' | 'activity'>('feed');
+    const [feedFilter, setFeedFilter] = useState<FeedFilterType>('all');
+    const [feedSort, setFeedSort] = useState<FeedSortType>('latest');
 
     useEffect(() => {
         let isSubscribed = true;
@@ -217,7 +219,7 @@ const DashboardPage = () => {
                                             </li>
                                         ))}
                                         <button
-                                            onClick={() => router.push('/dashboard/classroom')}
+                                            onClick={() => router.push('/classroom')}
                                             className="w-full text-center text-xs font-bold text-[var(--color-primary)] hover:underline mt-2 pt-2 border-t border-slate-50"
                                         >
                                             Manage Classes
@@ -227,7 +229,7 @@ const DashboardPage = () => {
                                     <div className="text-center py-2">
                                         <p className="text-xs text-gray-400 font-medium mb-2">No upcoming live classes.</p>
                                         <button
-                                            onClick={() => router.push('/dashboard/classroom')}
+                                            onClick={() => router.push('/classroom')}
                                             className="text-xs font-bold text-[var(--color-primary)] hover:underline"
                                         >
                                             Host Live Session
@@ -247,7 +249,7 @@ const DashboardPage = () => {
                                             <li
                                                 key={msg.id}
                                                 className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 p-2 rounded-lg transition-colors border border-gray-50/50"
-                                                onClick={() => router.push('/dashboard/messages')}
+                                                onClick={() => router.push('/messages')}
                                             >
                                                 <UserAvatar src={msg.avatar} name={msg.name} className="w-9 h-9 rounded-full border border-gray-100" />
                                                 <div className="min-w-0 flex-1">
@@ -264,7 +266,7 @@ const DashboardPage = () => {
                                     <div className="text-center py-2">
                                         <p className="text-xs text-gray-400 font-medium mb-2">No recent conversations.</p>
                                         <button
-                                            onClick={() => router.push('/dashboard/messages')}
+                                            onClick={() => router.push('/messages')}
                                             className="text-xs font-bold text-[var(--color-primary)] hover:underline"
                                         >
                                             Start a Chat
@@ -309,7 +311,7 @@ const DashboardPage = () => {
                                             <li
                                                 key={group.id}
                                                 className="flex justify-between items-center text-xs text-gray-600 font-medium hover:text-[var(--color-primary)] cursor-pointer p-1.5 hover:bg-gray-50 rounded"
-                                                onClick={() => router.push('/dashboard/classroom')}
+                                                onClick={() => router.push('/classroom')}
                                             >
                                                 <span>👥 {group.name}</span>
                                                 <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold">{group.tag}</span>
@@ -320,7 +322,7 @@ const DashboardPage = () => {
                                     <div className="text-center py-2">
                                         <p className="text-xs text-gray-400 font-medium mb-2">No active classroom groups.</p>
                                         <button
-                                            onClick={() => router.push('/dashboard/classroom')}
+                                            onClick={() => router.push('/classroom')}
                                             className="text-xs font-bold text-[var(--color-primary)] hover:underline"
                                         >
                                             Explore Classrooms
@@ -379,7 +381,7 @@ const DashboardPage = () => {
                                         <li
                                             key={msg.id}
                                             className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 p-2 rounded-lg transition-colors border border-gray-50/50"
-                                            onClick={() => router.push('/dashboard/messages')}
+                                            onClick={() => router.push('/messages')}
                                         >
                                             <UserAvatar src={msg.avatar} name={msg.name} className="w-9 h-9 rounded-full border border-gray-100" />
                                             <div className="min-w-0 flex-1">
@@ -396,7 +398,7 @@ const DashboardPage = () => {
                                 <div className="text-center py-2">
                                     <p className="text-xs text-gray-400 font-medium mb-2">No recent conversations.</p>
                                     <button
-                                        onClick={() => router.push('/dashboard/messages')}
+                                        onClick={() => router.push('/messages')}
                                         className="text-xs font-bold text-[var(--color-primary)] hover:underline"
                                     >
                                         Start a Chat
@@ -443,7 +445,7 @@ const DashboardPage = () => {
                                             <li
                                                 key={group.id}
                                                 className="flex justify-between items-center text-xs text-gray-600 font-medium hover:text-[var(--color-primary)] cursor-pointer p-1.5 hover:bg-gray-50 rounded"
-                                                onClick={() => router.push('/dashboard/classroom')}
+                                                onClick={() => router.push('/classroom')}
                                             >
                                                 <span>👥 {group.name}</span>
                                                 <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold">{group.tag}</span>
@@ -454,7 +456,7 @@ const DashboardPage = () => {
                                     <div className="text-center py-2">
                                         <p className="text-xs text-gray-400 font-medium mb-2">No active classroom groups.</p>
                                         <button
-                                            onClick={() => router.push('/dashboard/classroom')}
+                                            onClick={() => router.push('/classroom')}
                                             className="text-xs font-bold text-[var(--color-primary)] hover:underline"
                                         >
                                             Explore Classrooms
@@ -477,7 +479,10 @@ const DashboardPage = () => {
                         transition={{ delay: 0.1 }}
                     >
                         <PostJobCreator />
-                        <UserFeed />
+                        <div className="block md:hidden">
+                            <FeedFilters filter={feedFilter} setFilter={setFeedFilter} sortBy={feedSort} setSortBy={setFeedSort} />
+                        </div>
+                        <UserFeed filter={feedFilter} sortBy={feedSort} />
                     </motion.div>
 
                     {/* --- RIGHT SECTION (Responsive: Grids dynamically on Tablets, spans list on Desktops) --- */}
@@ -491,6 +496,10 @@ const DashboardPage = () => {
                         }}
                         transition={{ delay: 0.2 }}
                     >
+                        <div className="hidden md:block w-full">
+                            <FeedFilters filter={feedFilter} setFilter={setFeedFilter} sortBy={feedSort} setSortBy={setFeedSort} />
+                        </div>
+
                         {/* Invite card for all verified roles */}
                         {userRole === 'teacher' && (
                             <div className="w-full md:col-span-2 lg:col-span-1">
@@ -502,7 +511,6 @@ const DashboardPage = () => {
                             <CalendarSchedulerWidget />
                         </div>
                         <TopJobsList jobs={dashboardData?.topJobs} />
-                        <MostViewedWidget items={dashboardData?.mostViewed} />
                         <TopProfilesList profiles={dashboardData?.topProfiles} />
 
                         {/* Schedule a class */}
@@ -522,7 +530,7 @@ const DashboardPage = () => {
                                         </li>
                                     ))}
                                     <button
-                                        onClick={() => router.push('/dashboard/classroom')}
+                                        onClick={() => router.push('/classroom')}
                                         className="w-full text-center text-xs font-bold text-[var(--color-primary)] hover:underline mt-2 pt-2 border-t border-slate-50"
                                     >
                                         Manage Classes
@@ -532,7 +540,7 @@ const DashboardPage = () => {
                                 <div className="text-center py-2">
                                     <p className="text-xs text-gray-400 font-medium mb-2">No upcoming live classes.</p>
                                     <button
-                                        onClick={() => router.push('/dashboard/classroom')}
+                                        onClick={() => router.push('/classroom')}
                                         className="text-xs font-bold text-[var(--color-primary)] hover:underline"
                                     >
                                         Host Live Session

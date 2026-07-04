@@ -9,13 +9,13 @@ export default function Header() {
 
     const navLinks = [
         { name: 'Home', href: '/dashboard' },
-        { name: 'Connections', href: '/dashboard/connections' },
-        { name: 'My Classroom', href: '/dashboard/classroom' },
-        { name: 'Resources', href: '/dashboard/resources' },
-        { name: 'Desk', href: '/dashboard/desk' },
-        { name: 'Jobs', href: '/dashboard/jobs' },
-        { name: 'Notifications', href: '/dashboard/notifications' },
-        { name: 'My Profile', href: '/dashboard/profile' },
+        { name: 'Connections', href: '/connections' },
+        { name: 'My Classroom', href: '/classroom' },
+        { name: 'Resources', href: '/resources' },
+        { name: 'Desk', href: '/desk' },
+        { name: 'Jobs', href: '/jobs' },
+        { name: 'Notifications', href: '/notifications' },
+        { name: 'My Profile', href: '/profile' },
     ];
 
     return (

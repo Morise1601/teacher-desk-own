@@ -30,15 +30,52 @@ export default function NotificationMenu({ active }: { active?: boolean }) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
+        let dbNotifs: Notification[] = [];
         const res = decryptData(await getUserNotificationsAction(user.id));
         if (res.success && res.data) {
-            setNotifications(res.data);
-            setUnreadCount(res.data.filter((n: Notification) => !n.is_read).length);
+            dbNotifs = res.data;
         }
+
+        // Pull local storage job notifications
+        let localNotifs: Notification[] = [];
+        if (typeof window !== 'undefined') {
+            const localNotifsRaw = localStorage.getItem('td_notifications_map');
+            if (localNotifsRaw) {
+                try {
+                    const map = JSON.parse(localNotifsRaw);
+                    const teacherNotifs = map['teacher-session-123'] || [];
+                    const instNotifs = map['institution-session-456'] || [];
+                    localNotifs = [...teacherNotifs, ...instNotifs].map((n: any) => ({
+                        id: n.id,
+                        title: n.title,
+                        message: n.message,
+                        type: n.type,
+                        is_read: n.isRead,
+                        created_at: n.createdAt,
+                        action_url: '/jobs'
+                    }));
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+        }
+
+        // Combine and sort by date descending
+        const combined = [...dbNotifs, ...localNotifs].sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+
+        setNotifications(combined);
+        setUnreadCount(combined.filter(n => !n.is_read).length);
     };
 
     useEffect(() => {
         pullNotifications();
+
+        const handleJobsUpdated = () => {
+            pullNotifications();
+        };
+        window.addEventListener('jobs:updated', handleJobsUpdated);
 
         // Real-time subscription
         const channel = supabase
@@ -53,6 +90,7 @@ export default function NotificationMenu({ active }: { active?: boolean }) {
             .subscribe();
 
         return () => {
+            window.removeEventListener('jobs:updated', handleJobsUpdated);
             supabase.removeChannel(channel);
         };
     }, []);
@@ -69,6 +107,36 @@ export default function NotificationMenu({ active }: { active?: boolean }) {
     }, []);
 
     const handleMarkAsRead = async (id: string) => {
+        // Check if it's a local storage notification
+        if (typeof window !== 'undefined') {
+            const localNotifsRaw = localStorage.getItem('td_notifications_map');
+            if (localNotifsRaw) {
+                try {
+                    const map = JSON.parse(localNotifsRaw);
+                    let foundLocal = false;
+                    for (const userId in map) {
+                        const list = map[userId] || [];
+                        const idx = list.findIndex((n: any) => n.id === id);
+                        if (idx !== -1) {
+                            list[idx].isRead = true;
+                            map[userId] = list;
+                            foundLocal = true;
+                        }
+                    }
+                    if (foundLocal) {
+                        localStorage.setItem('td_notifications_map', JSON.stringify(map));
+                        window.dispatchEvent(new CustomEvent('jobs:updated'));
+                        setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+                        setUnreadCount(prev => Math.max(0, prev - 1));
+                        return;
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+        }
+
+        // Database notification
         await markAsReadAction(id);
         setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
         setUnreadCount(prev => Math.max(0, prev - 1));
@@ -76,8 +144,29 @@ export default function NotificationMenu({ active }: { active?: boolean }) {
 
     const handleMarkAllRead = async () => {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-        await markAllAsReadAction(user.id);
+        if (user) {
+            await markAllAsReadAction(user.id);
+        }
+
+        // Mark all local storage notifications as read
+        if (typeof window !== 'undefined') {
+            const localNotifsRaw = localStorage.getItem('td_notifications_map');
+            if (localNotifsRaw) {
+                try {
+                    const map = JSON.parse(localNotifsRaw);
+                    for (const userId in map) {
+                        const list = map[userId] || [];
+                        list.forEach((n: any) => { n.isRead = true; });
+                        map[userId] = list;
+                    }
+                    localStorage.setItem('td_notifications_map', JSON.stringify(map));
+                    window.dispatchEvent(new CustomEvent('jobs:updated'));
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+        }
+
         setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
         setUnreadCount(0);
     };
@@ -88,6 +177,12 @@ export default function NotificationMenu({ active }: { active?: boolean }) {
             case 'live': return <HiVideoCamera className="text-red-500 animate-pulse" />;
             case 'friend_request': return <HiUserAdd className="text-[var(--color-secondary)]" />;
             case 'friend_request_accepted': return <HiCheckCircle className="text-emerald-500" />;
+            case 'new_match': return <HiBell className="text-blue-500" />;
+            case 'app_viewed': return <HiOutlineCheckCircle className="text-slate-500" />;
+            case 'shortlisted': return <HiCheckCircle className="text-emerald-500" />;
+            case 'interview_invite': return <HiCalendar className="text-purple-500" />;
+            case 'job_closing': return <HiBell className="text-red-500" />;
+            case 'new_applicant': return <HiCheckCircle className="text-blue-600" />;
             default: return <HiBell className="text-[var(--color-primary)]" />;
         }
     };
