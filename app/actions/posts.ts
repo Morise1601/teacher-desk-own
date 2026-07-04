@@ -530,6 +530,50 @@ export async function deleteCommentAction(encryptedPayload: string) {
 }
 
 /**
+ * Edits a post comment.
+ */
+export async function editCommentAction(encryptedPayload: string) {
+  try {
+    const { userId, commentId, commentText } = decryptData(encryptedPayload);
+    if (!userId || !commentId || !commentText) throw new Error("Missing parameters for editing comment.");
+
+    if (commentText.length > 500) {
+      throw new Error("Comment text exceeds 500 character limit.");
+    }
+
+    const { data: comment } = await supabaseAdmin
+      .from('post_comments')
+      .select('user_id')
+      .eq('id', commentId)
+      .single();
+
+    if (!comment) throw new Error("Comment not found.");
+
+    if (comment.user_id !== userId) {
+      throw new Error("Unauthorized edit request.");
+    }
+
+    const { data: updatedComment, error } = await supabaseAdmin
+      .from('post_comments')
+      .update({
+        comment_text: commentText,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', commentId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return encryptData({ success: true, data: updatedComment });
+  } catch (err: any) {
+    console.error("❌ [EDIT COMMENT ERROR]:", err.message);
+    return encryptData({ success: false, message: err.message });
+  }
+}
+
+
+/**
  * Fetches comments for a specific post.
  */
 export async function getPostCommentsAction(postId: string) {

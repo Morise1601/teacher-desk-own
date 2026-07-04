@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Input } from "@/components/ui/input";
 import { FaPaperclip, FaImage, FaPoll, FaChevronDown, FaTimes, FaGlobe, FaUsers, FaBuilding, FaGraduationCap, FaUserTag } from 'react-icons/fa';
 import { toast } from 'react-toastify';
+import { EmojiPicker } from '@/components/ui/EmojiPicker';
 
 export default function PostJobCreator() {
     const [profile, setProfile] = useState<any>(null);
@@ -44,6 +45,25 @@ export default function PostJobCreator() {
 
     // Loading & UI states
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const contentRef = useRef<HTMLTextAreaElement>(null);
+
+    const handleEmojiSelect = (emoji: string) => {
+        if (contentRef.current) {
+            const input = contentRef.current;
+            const start = input.selectionStart || 0;
+            const end = input.selectionEnd || 0;
+            const text = input.value;
+            const nextContent = text.substring(0, start) + emoji + text.substring(end);
+            setContent(nextContent);
+            
+            setTimeout(() => {
+                input.focus();
+                input.setSelectionRange(start + emoji.length, start + emoji.length);
+            }, 0);
+        } else {
+            setContent(prev => prev + emoji);
+        }
+    };
 
     // Tagging state
     const [imageTags, setImageTags] = useState<{ [imageIndex: number]: Array<{ tagged_user_id: string; fullName: string; x: number | null; y: number | null }> }>({});
@@ -494,6 +514,7 @@ export default function PostJobCreator() {
             {/* Post content textarea */}
             <div className="mb-4">
                 <textarea
+                    ref={contentRef}
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     placeholder={`Share something educational, ${name.split(' ')[0]}?`}
@@ -649,6 +670,7 @@ export default function PostJobCreator() {
             {/* Bottom Actions Row */}
             <div className="flex flex-wrap items-center justify-between border-t border-gray-50 pt-3.5 gap-3">
                 <div className="flex items-center gap-1.5 sm:gap-2.5">
+                    <EmojiPicker onEmojiSelect={handleEmojiSelect} />
                     {/* Hide buttons when they aren't compatible with current selection */}
                     {!selectedPDF && !showPollCreator && (
                         <>

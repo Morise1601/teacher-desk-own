@@ -12,6 +12,7 @@ import {
 import { Resume } from '../types';
 import { jobsRepository } from '../jobsRepository';
 import { toast } from 'react-toastify';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 interface ResumeUploadProps {
     teacherId: string;
@@ -24,6 +25,8 @@ export default function ResumeUpload({ teacherId, onResumeChange, showPreview, o
     const [resume, setResume] = useState<Resume | null>(null);
     const [isDragActive, setIsDragActive] = useState(false);
     const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const loadResume = async () => {
@@ -134,20 +137,26 @@ export default function ResumeUpload({ teacherId, onResumeChange, showPreview, o
         }, 100);
     };
 
-    const handleDelete = async () => {
-        if (confirm('Are you sure you want to delete your uploaded resume?')) {
-            try {
-                await jobsRepository.deleteResume(teacherId);
-                toast.success('Resume deleted.');
-                setResume(null);
-                if (showPreview) {
-                    onPreviewClick();
-                }
-                window.dispatchEvent(new CustomEvent('jobs:updated'));
-                onResumeChange();
-            } catch (err) {
-                toast.error('Failed to delete resume.');
+    const handleDelete = () => {
+        setShowDeleteConfirm(true);
+    };
+
+    const executeDelete = async () => {
+        setIsDeleting(true);
+        try {
+            await jobsRepository.deleteResume(teacherId);
+            toast.success('Resume deleted.');
+            setResume(null);
+            if (showPreview) {
+                onPreviewClick();
             }
+            window.dispatchEvent(new CustomEvent('jobs:updated'));
+            onResumeChange();
+        } catch (err) {
+            toast.error('Failed to delete resume.');
+        } finally {
+            setIsDeleting(false);
+            setShowDeleteConfirm(false);
         }
     };
 
@@ -333,6 +342,18 @@ export default function ResumeUpload({ teacherId, onResumeChange, showPreview, o
                 onChange={handleFileChange}
                 accept=".pdf,.docx"
                 className="hidden"
+            />
+
+            <ConfirmDialog
+                isOpen={showDeleteConfirm}
+                onClose={() => setShowDeleteConfirm(false)}
+                onConfirm={executeDelete}
+                title="Delete Resume"
+                message="Are you sure you want to delete your uploaded resume? This action cannot be undone."
+                confirmText="Delete"
+                cancelText="Cancel"
+                type="danger"
+                isLoading={isDeleting}
             />
         </div>
     );
