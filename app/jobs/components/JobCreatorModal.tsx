@@ -8,6 +8,16 @@ import { FaTimes, FaBriefcase, FaGraduationCap, FaRupeeSign, FaCalendarAlt, FaMa
 import { Job } from '../types';
 import { jobsRepository } from '../jobsRepository';
 import { toast } from 'react-toastify';
+import dynamic from 'next/dynamic';
+
+const MapPicker = dynamic(() => import('@/components/maps/MapPicker'), {
+    ssr: false,
+    loading: () => (
+        <div className="h-full w-full bg-slate-50 flex items-center justify-center">
+            <div className="w-8 h-8 border-3 border-slate-200 border-t-[var(--color-primary)] rounded-full animate-spin"></div>
+        </div>
+    )
+});
 
 interface JobCreatorModalProps {
     isOpen: boolean;
@@ -34,6 +44,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
     const [skillsText, setSkillsText] = useState('');
     const [isFeatured, setIsFeatured] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showMapPicker, setShowMapPicker] = useState(false);
 
     // If editing, load the job details
     useEffect(() => {
@@ -155,7 +166,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                 status: 'active' as const,
                 tags,
                 qualification: subject === 'General' || subject === 'Special Education' ? 'B.Ed' : 'M.Ed',
-                institutionId: 'institution-id-dummy' // in real app: auth.user.id
+                institutionId: 'institution-session-456' // UPDATED to use correct active recruiter session ID
             };
 
             if (editingJob) {
@@ -231,7 +242,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                                 onChange={e => setSubject(e.target.value)}
                                 className="w-full text-xs border border-gray-200 rounded-lg p-2.5 outline-none bg-white focus:border-[var(--color-primary)] transition"
                             >
-                                {['Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Computer Science', 'General', 'Special Education'].map(sub => (
+                                {['Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Computer Science', 'General', 'Special Education', 'History', 'Geography', 'Social Studies', 'Hindi', 'Sanskrit', 'Art & Craft', 'Music', 'Physical Education'].map(sub => (
                                     <option key={sub} value={sub}>{sub}</option>
                                 ))}
                             </select>
@@ -247,7 +258,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                                 onChange={e => setBoard(e.target.value)}
                                 className="w-full text-xs border border-gray-200 rounded-lg p-2.5 outline-none bg-white"
                             >
-                                {['CBSE', 'ICSE', 'State Board'].map(b => (
+                                {['CBSE', 'ICSE', 'State Board', 'IB', 'IGCSE', 'University', 'Other'].map(b => (
                                     <option key={b} value={b}>{b}</option>
                                 ))}
                             </select>
@@ -281,17 +292,43 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                     </div>
 
                     {/* Location Row */}
+                    <div className="flex flex-col gap-2 mt-2.5 mb-1">
+                        <label className="text-xs font-bold text-gray-700 flex items-center justify-between">
+                            <span>Job Location</span>
+                            <span className="text-2xs font-semibold text-gray-400 uppercase tracking-widest">Pinpoint on Map</span>
+                        </label>
+                        
+                        <button
+                            type="button"
+                            onClick={() => setShowMapPicker(true)}
+                            className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50/65 to-indigo-50/65 hover:from-blue-50 hover:to-indigo-50 border border-blue-100/70 hover:border-blue-300 rounded-xl transition-all duration-200 group text-left shadow-sm"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-8.5 h-8.5 rounded-lg bg-white shadow-sm flex items-center justify-center text-blue-600 border border-blue-100/50 group-hover:scale-105 transition-transform">
+                                    <FaMapMarkerAlt size={13} />
+                                </div>
+                                <div>
+                                    <h4 className="text-xs font-bold text-slate-800">Pinpoint Location on Map</h4>
+                                    <p className="text-[10px] text-slate-500 font-medium">Auto-fill city & state from interactive map picker</p>
+                                </div>
+                            </div>
+                            <span className="text-[9px] font-bold text-blue-600 bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-blue-100/50 group-hover:bg-blue-600 group-hover:text-white transition-all uppercase tracking-wider">
+                                Open Map
+                            </span>
+                        </button>
+                    </div>
+                    
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="flex flex-col gap-1">
                             <label className="text-xs font-bold text-gray-700 flex items-center gap-1">
-                                <FaMapMarkerAlt className="text-gray-400 text-2xs" /> City <span className="text-red-500">*</span>
+                                City <span className="text-red-500">*</span>
                             </label>
                             <input 
                                 type="text"
                                 value={location}
                                 onChange={e => setLocation(e.target.value)}
                                 placeholder="e.g. New Delhi"
-                                className="w-full text-xs border border-gray-200 rounded-lg p-2.5 outline-none"
+                                className="w-full text-xs border border-gray-200 rounded-lg p-2.5 outline-none bg-white focus:border-[var(--color-primary)] transition-all"
                                 required
                             />
                         </div>
@@ -303,7 +340,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                                 value={state}
                                 onChange={e => setState(e.target.value)}
                                 placeholder="e.g. Delhi"
-                                className="w-full text-xs border border-gray-200 rounded-lg p-2.5 outline-none"
+                                className="w-full text-xs border border-gray-200 rounded-lg p-2.5 outline-none bg-white focus:border-[var(--color-primary)] transition-all"
                                 required
                             />
                         </div>
@@ -459,6 +496,30 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                     </button>
                 </div>
             </motion.div>
+
+            {showMapPicker && (
+                <MapPicker
+                    title="Location Selector"
+                    onLocationSelect={(fullAddress) => {
+                        const parts = fullAddress.split(',').map(p => p.trim());
+                        let detectedCity = '';
+                        let detectedState = '';
+                        if (parts.length >= 2) {
+                            const countryIndex = parts.indexOf('India');
+                            if (countryIndex !== -1 && countryIndex >= 2) {
+                                detectedState = parts[countryIndex - 1].replace(/\d+/g, '').trim();
+                                detectedCity = parts[countryIndex - 2];
+                            } else {
+                                detectedState = parts[parts.length - 2] || '';
+                                detectedCity = parts[parts.length - 3] || parts[parts.length - 2] || '';
+                            }
+                        }
+                        if (detectedCity) setLocation(detectedCity);
+                        if (detectedState) setState(detectedState);
+                    }}
+                    onClose={() => setShowMapPicker(false)}
+                />
+            )}
         </div>
     );
 }

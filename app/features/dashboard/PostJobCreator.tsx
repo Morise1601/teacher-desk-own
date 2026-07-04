@@ -5,12 +5,12 @@ import { UserAvatar } from '@/components/ui/user-avatar';
 import { supabase } from '@/lib/supabase';
 import { getProfileByUserIdAction } from '@/app/actions/profile';
 import { getInstitutionProfileAction } from '@/app/actions/institution';
-import { createPostAction, getClassroomsAction } from '@/app/actions/posts';
+import { createPostAction, getClassroomsAction, searchUsersAction } from '@/app/actions/posts';
 import { decryptData, encryptData } from '@/lib/crypto';
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Input } from "@/components/ui/input";
-import { FaPaperclip, FaImage, FaPoll, FaChevronDown, FaTimes, FaGlobe, FaUsers, FaBuilding, FaGraduationCap } from 'react-icons/fa';
+import { FaPaperclip, FaImage, FaPoll, FaChevronDown, FaTimes, FaGlobe, FaUsers, FaBuilding, FaGraduationCap, FaUserTag } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 
 export default function PostJobCreator() {
@@ -44,6 +44,16 @@ export default function PostJobCreator() {
 
     // Loading & UI states
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Tagging state
+    const [imageTags, setImageTags] = useState<{ [imageIndex: number]: Array<{ tagged_user_id: string; fullName: string; x: number | null; y: number | null }> }>({});
+    const [activeTaggingImageIndex, setActiveTaggingImageIndex] = useState<number | null>(null);
+    const [pendingTagCoord, setPendingTagCoord] = useState<{ x: number; y: number } | null>(null);
+    
+    // Tagging search state
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [searching, setSearching] = useState(false);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -125,6 +135,104 @@ export default function PostJobCreator() {
     const handleRemoveImage = (index: number) => {
         setSelectedImages(prev => prev.filter((_, i) => i !== index));
         setImagePreviews(prev => prev.filter((_, i) => i !== index));
+        
+        // Clean up or adjust tags
+        setImageTags(prev => {
+            const next = { ...prev };
+            delete next[index];
+            // Shift indices of subsequent images
+            const shifted: { [key: number]: any } = {};
+            Object.keys(next).forEach(k => {
+                const keyNum = parseInt(k);
+                if (keyNum > index) {
+                    shifted[keyNum - 1] = next[keyNum];
+                } else {
+                    shifted[keyNum] = next[keyNum];
+                }
+            });
+            return shifted;
+        });
+    };
+
+    const getTagsCountForImage = (idx: number) => {
+        return imageTags[idx]?.length || 0;
+    };
+
+    const openTaggingModal = (index: number) => {
+        setActiveTaggingImageIndex(index);
+        setPendingTagCoord(null);
+        setSearchQuery('');
+        setSearchResults([]);
+    };
+
+    const handleSearchUser = async (val: string) => {
+        setSearchQuery(val);
+        if (val.trim().length === 0) {
+            setSearchResults([]);
+            return;
+        }
+        setSearching(true);
+        try {
+            const payload = encryptData({ query: val });
+            const res = decryptData(await searchUsersAction(payload));
+            if (res.success && res.data) {
+                setSearchResults(res.data);
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setSearching(false);
+        }
+    };
+
+    const addTag = (user: any) => {
+        if (activeTaggingImageIndex === null) return;
+        if (activeTaggingImageIndex !== -1 && !pendingTagCoord) return;
+        
+        // Check if user is already tagged on this image/post
+        const currentTags = imageTags[activeTaggingImageIndex] || [];
+        const isAlreadyTagged = currentTags.some(t => t.tagged_user_id === user.user_id);
+        if (isAlreadyTagged) {
+            toast.warning(activeTaggingImageIndex === -1 ? "This user is already tagged on this post." : "This user is already tagged on this image.");
+            return;
+        }
+
+        const newTag = {
+            tagged_user_id: user.user_id,
+            fullName: user.fullName,
+            x: activeTaggingImageIndex === -1 ? null : pendingTagCoord!.x,
+            y: activeTaggingImageIndex === -1 ? null : pendingTagCoord!.y
+        };
+
+        setImageTags(prev => ({
+            ...prev,
+            [activeTaggingImageIndex]: [...(prev[activeTaggingImageIndex] || []), newTag]
+        }));
+        
+        setPendingTagCoord(null);
+        setSearchQuery('');
+        setSearchResults([]);
+    };
+
+    const removeTagAtIndex = (idx: number) => {
+        if (activeTaggingImageIndex === null) return;
+        setImageTags(prev => ({
+            ...prev,
+            [activeTaggingImageIndex]: (prev[activeTaggingImageIndex] || []).filter((_, i) => i !== idx)
+        }));
+    };
+
+    const handleImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        // Prevent click if we click a tag close button or pending dialog
+        if ((e.target as HTMLElement).closest('.pointer-events-auto')) return;
+
+        const rect = e.currentTarget.getBoundingClientRect();
+        const clickX = ((e.clientX - rect.left) / rect.width) * 100;
+        const clickY = ((e.clientY - rect.top) / rect.height) * 100;
+        
+        setPendingTagCoord({ x: clickX, y: clickY });
+        setSearchQuery('');
+        setSearchResults([]);
     };
 
     const handlePDFSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -224,6 +332,21 @@ export default function PostJobCreator() {
 
         setIsSubmitting(true);
         try {
+            // Flatten the tags object to an array of { imageIndex: number, tagged_user_id: string, x: number, y: number }
+            const flattenedTags: any[] = [];
+            Object.keys(imageTags).forEach((imgIdxStr) => {
+                const imgIdx = parseInt(imgIdxStr);
+                const tagsForImg = imageTags[imgIdx] || [];
+                tagsForImg.forEach((tag) => {
+                    flattenedTags.push({
+                        imageIndex: imgIdx,
+                        tagged_user_id: tag.tagged_user_id,
+                        x: tag.x !== null && tag.x !== undefined ? parseFloat(tag.x.toFixed(2)) : null,
+                        y: tag.y !== null && tag.y !== undefined ? parseFloat(tag.y.toFixed(2)) : null
+                    });
+                });
+            });
+
             const payload = {
                 userId,
                 postType,
@@ -237,7 +360,8 @@ export default function PostJobCreator() {
                     options: pollOptions.filter(o => o.trim() !== ''),
                     expiresAt: new Date(pollExpiresAt).toISOString(),
                     allowMultiple: pollAllowMultiple
-                } : null
+                } : null,
+                tags: flattenedTags
             };
 
             const encryptedPayload = encryptData(payload);
@@ -250,6 +374,7 @@ export default function PostJobCreator() {
                 setContent('');
                 setSelectedImages([]);
                 setImagePreviews([]);
+                setImageTags({}); // Reset tags
                 setSelectedPDF(null);
                 setShowPollCreator(false);
                 setPollQuestion('');
@@ -383,6 +508,17 @@ export default function PostJobCreator() {
                     {imagePreviews.map((preview, index) => (
                         <div key={index} className="relative aspect-video rounded-lg overflow-hidden border border-gray-100 group">
                             <img src={preview} alt="upload preview" className="w-full h-full object-cover" />
+                            
+                            {/* Tag people button overlay */}
+                            <button
+                                type="button"
+                                onClick={() => openTaggingModal(index)}
+                                className="absolute bottom-1 left-1 bg-black/60 text-white rounded px-2 py-0.5 text-[9px] hover:bg-black transition-all font-bold flex items-center gap-1 shadow-sm"
+                            >
+                                <FaUserTag className="text-[10px]" />
+                                <span>{getTagsCountForImage(index) > 0 ? `${getTagsCountForImage(index)} Tagged` : 'Tag People'}</span>
+                            </button>
+
                             <button
                                 onClick={() => handleRemoveImage(index)}
                                 className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 hover:bg-black transition-colors"
@@ -559,6 +695,18 @@ export default function PostJobCreator() {
                             <FaPoll className="text-purple-500 text-sm" /> <span>Poll</span>
                         </button>
                     )}
+
+                    {/* Tag button for non-image posts */}
+                    {!selectedImages.length && (
+                        <button 
+                            type="button"
+                            onClick={() => openTaggingModal(-1)}
+                            className="flex items-center gap-1.5 hover:bg-teal-50 text-gray-500 hover:text-teal-600 px-3 py-1.5 rounded-lg transition-all text-xs font-bold"
+                        >
+                            <span className="text-teal-500 text-sm">👥</span> 
+                            <span>{getTagsCountForImage(-1) > 0 ? `${getTagsCountForImage(-1)} Tagged` : 'Tag People'}</span>
+                        </button>
+                    )}
                 </div>
 
                 <button 
@@ -576,6 +724,245 @@ export default function PostJobCreator() {
                     )}
                 </button>
             </div>
+
+            {/* Tagging Modal Overlay */}
+            <AnimatePresence>
+                {activeTaggingImageIndex !== null && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.95, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.95, y: 20 }}
+                            className="bg-white rounded-2xl shadow-2xl border border-gray-100 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between border-b border-gray-100 p-4">
+                                <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                                    <span>👥</span> Tag People
+                                    {activeTaggingImageIndex !== -1 && (
+                                        <span className="text-xs text-gray-400 font-semibold">(Image {activeTaggingImageIndex + 1} of {imagePreviews.length})</span>
+                                    )}
+                                </h3>
+                                <button
+                                    onClick={() => setActiveTaggingImageIndex(null)}
+                                    className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                                >
+                                    <FaTimes className="text-sm" />
+                                </button>
+                            </div>
+
+                            {/* Modal Body */}
+                            <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-3 gap-6 p-6">
+                                {/* Image Container or Global Search Box (Left/Center) */}
+                                <div className="md:col-span-2 flex flex-col gap-3">
+                                    {activeTaggingImageIndex === -1 ? (
+                                        <div className="relative bg-gray-50 border border-gray-200/60 rounded-xl p-6 flex flex-col gap-4 min-h-[320px] justify-center items-center">
+                                            <div className="text-center space-y-1 max-w-sm">
+                                                <div className="w-12 h-12 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center text-xl mx-auto font-bold">👥</div>
+                                                <h4 className="font-bold text-gray-800 text-sm">Tag People on Post</h4>
+                                                <p className="text-xs text-gray-400">Search and select teachers or institutions to tag them globally on this post.</p>
+                                            </div>
+
+                                            <div className="w-full max-w-md relative pointer-events-auto">
+                                                <input 
+                                                    type="text"
+                                                    placeholder="Search name to tag..."
+                                                    value={searchQuery}
+                                                    onChange={(e) => handleSearchUser(e.target.value)}
+                                                    className="text-xs p-2.5 border border-gray-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-400 w-full shadow-sm"
+                                                    autoFocus
+                                                />
+                                                {searching && <span className="absolute right-3 top-3 text-[10px] text-gray-400 animate-pulse">Searching...</span>}
+                                                
+                                                {!searching && searchResults.length > 0 && (
+                                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl max-h-48 overflow-y-auto flex flex-col z-50 p-1">
+                                                        {searchResults.map((user: any) => (
+                                                            <button
+                                                                key={user.user_id}
+                                                                type="button"
+                                                                onClick={() => addTag(user)}
+                                                                className="flex items-center gap-2.5 p-2 hover:bg-teal-50/50 text-left w-full text-xs transition-colors rounded-lg"
+                                                            >
+                                                                <UserAvatar 
+                                                                    src={user.profile_pic_url} 
+                                                                    name={user.fullName} 
+                                                                    className="w-6 h-6 rounded-full" 
+                                                                />
+                                                                <div className="min-w-0 flex-1">
+                                                                    <p className="truncate font-bold text-gray-700 text-xs">{user.fullName}</p>
+                                                                    <p className="truncate text-gray-400 text-[10px]">{user.headline || user.role}</p>
+                                                                </div>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {!searching && searchQuery.trim().length > 0 && searchResults.length === 0 && (
+                                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl p-3 text-center text-[11px] text-red-500 z-50">
+                                                        No users found.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <p className="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Click on the photo to tag people</p>
+                                            <div 
+                                                className="relative bg-gray-50 border border-gray-100 rounded-xl overflow-hidden cursor-crosshair aspect-video flex items-center justify-center select-none"
+                                                onClick={handleImageClick}
+                                            >
+                                                <img 
+                                                    src={imagePreviews[activeTaggingImageIndex]} 
+                                                    alt="Tagging preview" 
+                                                    className="max-w-full max-h-[60vh] object-contain pointer-events-none"
+                                                />
+
+                                                {/* Existing tags on this image */}
+                                                {(imageTags[activeTaggingImageIndex] || []).map((tag, tIdx) => (
+                                                    <div
+                                                        key={tIdx}
+                                                        style={{
+                                                            position: 'absolute',
+                                                            left: `${tag.x}%`,
+                                                            top: `${tag.y}%`,
+                                                            transform: 'translate(-50%, -100%)',
+                                                        }}
+                                                        className="bg-black/85 text-white text-[10px] font-semibold px-2 py-0.5 rounded shadow flex items-center gap-1 pointer-events-auto"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <span>{tag.fullName}</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeTagAtIndex(tIdx)}
+                                                            className="text-gray-400 hover:text-red-400 ml-1 font-bold text-xs"
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </div>
+                                                ))}
+
+                                                {/* Pending Tag coordinate popup */}
+                                                {pendingTagCoord && (
+                                                    <div 
+                                                        style={{ 
+                                                            position: 'absolute', 
+                                                            left: `${pendingTagCoord.x}%`, 
+                                                            top: `${pendingTagCoord.y}%`,
+                                                            transform: 'translate(-50%, 8px)',
+                                                            zIndex: 50
+                                                        }}
+                                                        className="bg-white rounded-lg shadow-xl border border-gray-200 p-2.5 w-52 flex flex-col gap-1.5 pointer-events-auto"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <input 
+                                                            type="text"
+                                                            placeholder="Who is this?"
+                                                            value={searchQuery}
+                                                            onChange={(e) => handleSearchUser(e.target.value)}
+                                                            className="text-xs p-1.5 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 w-full"
+                                                            autoFocus
+                                                        />
+                                                        {searching && <span className="text-[10px] text-gray-400 animate-pulse">Searching users...</span>}
+                                                        {!searching && searchResults.length > 0 && (
+                                                            <div className="max-h-28 overflow-y-auto flex flex-col border border-gray-100 rounded">
+                                                                {searchResults.map((user: any) => (
+                                                                    <button
+                                                                        key={user.user_id}
+                                                                        type="button"
+                                                                        onClick={() => addTag(user)}
+                                                                        className="flex items-center gap-2 p-1.5 hover:bg-slate-50 text-left w-full text-xs transition-colors"
+                                                                    >
+                                                                        <UserAvatar 
+                                                                            src={user.profile_pic_url} 
+                                                                            name={user.fullName} 
+                                                                            className="w-5 h-5 rounded-full" 
+                                                                        />
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <p className="truncate font-semibold text-gray-700 text-[11px]">{user.fullName}</p>
+                                                                            <p className="truncate text-gray-400 text-[9px]">{user.headline || user.role}</p>
+                                                                        </div>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        {!searching && searchQuery.trim().length > 0 && searchResults.length === 0 && (
+                                                            <span className="text-[10px] text-red-500">No users found.</span>
+                                                        )}
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => setPendingTagCoord(null)}
+                                                            className="text-[10px] text-gray-400 hover:text-red-500 font-bold self-end"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+
+                                {/* Tagged List / Sidebar (Right) */}
+                                <div className="border-t md:border-t-0 md:border-l border-gray-100 pt-4 md:pt-0 md:pl-6 flex flex-col gap-4">
+                                    <h4 className="font-bold text-gray-700 text-xs uppercase tracking-wider">Tagged People</h4>
+                                    <div className="flex-1 flex flex-col gap-2 max-h-[35vh] md:max-h-none overflow-y-auto">
+                                        {(imageTags[activeTaggingImageIndex] || []).length === 0 ? (
+                                            <p className="text-xs text-gray-400 italic">No one tagged yet.</p>
+                                        ) : (
+                                            (imageTags[activeTaggingImageIndex] || []).map((tag, tIdx) => (
+                                                <div key={tIdx} className="flex items-center justify-between p-2 hover:bg-gray-50 border border-gray-100 rounded-lg transition-colors">
+                                                    <span className="text-xs font-semibold text-gray-700">{tag.fullName}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeTagAtIndex(tIdx)}
+                                                        className="text-gray-400 hover:text-red-500 hover:bg-red-50 p-1 rounded-full transition-all"
+                                                    >
+                                                        <FaTimes className="text-[10px]" />
+                                                    </button>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="border-t border-gray-100 p-4 flex justify-end gap-3">
+                                {activeTaggingImageIndex !== -1 && activeTaggingImageIndex > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => openTaggingModal(activeTaggingImageIndex - 1)}
+                                        className="border border-gray-200 text-gray-600 hover:bg-gray-50 px-4 py-2 rounded-lg text-xs font-bold transition-all"
+                                    >
+                                        Previous Image
+                                    </button>
+                                )}
+                                {activeTaggingImageIndex !== -1 && activeTaggingImageIndex < imagePreviews.length - 1 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => openTaggingModal(activeTaggingImageIndex + 1)}
+                                        className="bg-[var(--color-primary)] text-white hover:opacity-90 px-4 py-2 rounded-lg text-xs font-bold transition-all"
+                                    >
+                                        Next Image
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTaggingImageIndex(null)}
+                                    className="bg-gray-800 text-white hover:bg-gray-900 px-6 py-2 rounded-lg text-xs font-bold transition-all"
+                                >
+                                    Done
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </motion.div>
     );
 }

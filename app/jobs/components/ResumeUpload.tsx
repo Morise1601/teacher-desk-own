@@ -16,13 +16,14 @@ import { toast } from 'react-toastify';
 interface ResumeUploadProps {
     teacherId: string;
     onResumeChange: () => void;
+    showPreview: boolean;
+    onPreviewClick: () => void;
 }
 
-export default function ResumeUpload({ teacherId, onResumeChange }: ResumeUploadProps) {
+export default function ResumeUpload({ teacherId, onResumeChange, showPreview, onPreviewClick }: ResumeUploadProps) {
     const [resume, setResume] = useState<Resume | null>(null);
     const [isDragActive, setIsDragActive] = useState(false);
     const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-    const [showPreview, setShowPreview] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const loadResume = async () => {
@@ -87,6 +88,13 @@ export default function ResumeUpload({ teacherId, onResumeChange }: ResumeUpload
         setUploadProgress(0);
         
         const reader = new FileReader();
+        let base64Result: string | null = null;
+        let isFileLoaded = false;
+        
+        reader.onloadend = () => {
+            base64Result = reader.result as string;
+            isFileLoaded = true;
+        };
         reader.readAsDataURL(file);
         
         let progressVal = 0;
@@ -94,30 +102,36 @@ export default function ResumeUpload({ teacherId, onResumeChange }: ResumeUpload
             progressVal += 15;
             if (progressVal >= 100) {
                 progressVal = 100;
+                setUploadProgress(100);
                 clearInterval(interval);
                 
-                reader.onloadend = async () => {
-                    try {
-                        const base64 = reader.result as string;
-                        await jobsRepository.saveResume(teacherId, {
-                            fileName: file.name,
-                            fileSize: file.size,
-                            base64
-                        });
-                        toast.success('Resume uploaded successfully!');
-                        window.dispatchEvent(new CustomEvent('jobs:updated'));
-                        onResumeChange();
-                        await loadResume();
-                        setUploadProgress(null);
-                    } catch (err: any) {
-                        toast.error(err.message || 'Failed to save resume.');
-                        setUploadProgress(null);
+                const saveFile = async () => {
+                    if (isFileLoaded && base64Result) {
+                        try {
+                            await jobsRepository.saveResume(teacherId, {
+                                fileName: file.name,
+                                fileSize: file.size,
+                                base64: base64Result
+                            });
+                            toast.success('Resume uploaded successfully!');
+                            window.dispatchEvent(new CustomEvent('jobs:updated'));
+                            onResumeChange();
+                            await loadResume();
+                            setUploadProgress(null);
+                        } catch (err: any) {
+                            toast.error(err.message || 'Failed to save resume.');
+                            setUploadProgress(null);
+                        }
+                    } else {
+                        setTimeout(saveFile, 50);
                     }
                 };
+                
+                saveFile();
             } else {
                 setUploadProgress(progressVal);
             }
-        }, 120);
+        }, 100);
     };
 
     const handleDelete = async () => {
@@ -126,7 +140,9 @@ export default function ResumeUpload({ teacherId, onResumeChange }: ResumeUpload
                 await jobsRepository.deleteResume(teacherId);
                 toast.success('Resume deleted.');
                 setResume(null);
-                setShowPreview(false);
+                if (showPreview) {
+                    onPreviewClick();
+                }
                 window.dispatchEvent(new CustomEvent('jobs:updated'));
                 onResumeChange();
             } catch (err) {
@@ -251,8 +267,12 @@ export default function ResumeUpload({ teacherId, onResumeChange }: ResumeUpload
                     {/* Action buttons */}
                     <div className="flex items-center justify-between gap-2.5">
                         <button 
-                            onClick={() => setShowPreview(!showPreview)}
-                            className="flex-1 flex items-center justify-center gap-1.5 border border-[var(--color-primary)]/20 hover:bg-slate-50 text-[var(--color-primary)] text-xs font-bold py-2 rounded-lg transition"
+                            onClick={onPreviewClick}
+                            className={`flex-grow flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-lg transition border ${
+                                showPreview 
+                                    ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)] shadow-sm hover:bg-[var(--color-secondary)]' 
+                                    : 'border-slate-200 hover:border-[var(--color-primary)]/40 hover:bg-slate-50 text-gray-600 hover:text-[var(--color-primary)]'
+                            }`}
                         >
                             <FaEye className="text-xs" /> {showPreview ? 'Hide Preview' : 'Preview'}
                         </button>
@@ -260,7 +280,7 @@ export default function ResumeUpload({ teacherId, onResumeChange }: ResumeUpload
                         <a 
                             href={resume.fileUrl} 
                             download={resume.fileName}
-                            className="flex items-center justify-center w-10 h-10 border border-slate-200 hover:bg-slate-50 rounded-lg text-gray-600 hover:text-[var(--color-primary)] transition"
+                            className="flex items-center justify-center w-10 h-10 border border-slate-200 hover:bg-slate-50 rounded-lg text-gray-600 hover:text-[var(--color-primary)] transition flex-shrink-0"
                             title="Download Resume"
                         >
                             <FaDownload className="text-xs" />
@@ -268,7 +288,7 @@ export default function ResumeUpload({ teacherId, onResumeChange }: ResumeUpload
 
                         <button 
                             onClick={() => fileInputRef.current?.click()}
-                            className="flex items-center justify-center w-10 h-10 border border-slate-200 hover:bg-slate-50 rounded-lg text-gray-600 hover:text-[var(--color-primary)] transition"
+                            className="flex items-center justify-center w-10 h-10 border border-slate-200 hover:bg-slate-50 rounded-lg text-gray-600 hover:text-[var(--color-primary)] transition flex-shrink-0"
                             title="Replace Resume"
                         >
                             <FaRedo className="text-xs" />
@@ -276,47 +296,12 @@ export default function ResumeUpload({ teacherId, onResumeChange }: ResumeUpload
 
                         <button 
                             onClick={handleDelete}
-                            className="flex items-center justify-center w-10 h-10 border border-red-100 hover:bg-red-50 rounded-lg text-red-500 transition"
+                            className="flex items-center justify-center w-10 h-10 border border-red-100 hover:bg-red-50 rounded-lg text-red-500 transition flex-shrink-0"
                             title="Delete Resume"
                         >
                             <FaTrashAlt className="text-xs" />
                         </button>
                     </div>
-
-                    {/* PDF Viewer Block */}
-                    <AnimatePresence>
-                        {showPreview && resume.fileUrl && (
-                            <motion.div 
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 350 }}
-                                exit={{ opacity: 0, height: 0 }}
-                                className="overflow-hidden border border-gray-200 rounded-lg mt-1 flex flex-col"
-                            >
-                                <div className="bg-gray-50 border-b border-gray-100 p-2 flex items-center justify-between">
-                                    <span className="text-[11px] font-bold text-gray-500">PDF Viewer</span>
-                                    <button 
-                                        onClick={() => setShowPreview(false)}
-                                        className="text-xs text-gray-400 hover:text-gray-700 font-bold"
-                                    >
-                                        Close
-                                    </button>
-                                </div>
-                                {resume.fileName.endsWith('.pdf') ? (
-                                    <iframe 
-                                        src={resume.fileUrl} 
-                                        className="w-full flex-grow border-0"
-                                        title="Resume Preview"
-                                    />
-                                ) : (
-                                    <div className="flex-grow flex flex-col items-center justify-center p-6 bg-slate-50 text-center">
-                                        <FaFileWord className="text-4xl text-blue-500 mb-2" />
-                                        <p className="text-xs font-bold text-gray-700">Preview not supported for Word files (.docx)</p>
-                                        <p className="text-[11px] text-gray-400 mt-1">Please download the file or use PDF format to view inline.</p>
-                                    </div>
-                                )}
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
                 </div>
             ) : (
                 // Drag and Drop Zone Empty State

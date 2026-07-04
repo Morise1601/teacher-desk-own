@@ -7,6 +7,7 @@ import SpecializationsSection from '../features/profile/specialization';
 import ExperienceSection from '../features/profile/experience';
 import EducationSection from '../features/profile/education';
 import VolunteeringSection from '../features/profile/volunteering';
+import SavedItemsSection from '../features/profile/SavedItemsSection';
 import LanguagesSection from '../features/profile/language';
 import Interests from '../features/profile/Interests';
 import Skills from '../features/profile/Skills';
@@ -168,6 +169,7 @@ export default function ProfilePage() {
                                         <EducationSection profile={profile} onUpdate={handleSave} />
                                         <SpecializationsSection profile={profile} onUpdate={handleSave} />
                                         <VolunteeringSection profile={profile} onUpdate={handleSave} />
+                                        {profile?.user_id && <SavedItemsSection userId={profile.user_id} />}
                                     </div>
 
                                     {/* Sidebar Context */}

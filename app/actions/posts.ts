@@ -49,7 +49,8 @@ export async function createPostAction(encryptedPayload: string) {
       institutionId, 
       repostPostId, 
       files, // Array of { base64: string, name: string }
-      poll // { question: string, options: string[], expiresAt: string, allowMultiple?: boolean }
+      poll, // { question: string, options: string[], expiresAt: string, allowMultiple?: boolean }
+      tags // Array of { imageIndex: number, tagged_user_id: string, x: number, y: number }
     } = payload;
 
     if (!userId) {
@@ -166,6 +167,7 @@ export async function createPostAction(encryptedPayload: string) {
         throw new Error("A maximum of 5 images are allowed per post.");
       }
 
+      let imgIndex = 0;
       for (const file of files) {
         validateImage(file.name, file.base64);
 
@@ -187,13 +189,41 @@ export async function createPostAction(encryptedPayload: string) {
           .from('post-images')
           .getPublicUrl(filePath);
 
-        // Save reference in post_media
-        await supabaseAdmin.from('post_media').insert([{
-          post_id: postId,
-          file_url: publicUrl,
-          file_type: `image/${ext}`,
-          file_name: file.name
-        }]);
+        // Save reference in post_media and get ID for tagging
+        const { data: mediaRecord, error: mediaErr } = await supabaseAdmin
+          .from('post_media')
+          .insert([{
+            post_id: postId,
+            file_url: publicUrl,
+            file_type: `image/${ext}`,
+            file_name: file.name
+          }])
+          .select()
+          .single();
+
+        if (mediaErr) throw new Error(`Failed to save post media: ${mediaErr.message}`);
+
+        // Insert tags for this specific image if present
+        if (mediaRecord && tags && tags.length > 0) {
+          const imageTags = tags.filter((t: any) => t.imageIndex === imgIndex);
+          if (imageTags.length > 0) {
+            const tagsToInsert = imageTags.map((t: any) => ({
+              post_id: postId,
+              post_media_id: mediaRecord.id,
+              tagged_user_id: t.tagged_user_id,
+              x: t.x,
+              y: t.y
+            }));
+            const { error: tagInsertErr } = await supabaseAdmin
+              .from('post_tags')
+              .insert(tagsToInsert);
+            if (tagInsertErr) {
+              console.error("❌ [TAG INSERT ERROR]:", tagInsertErr.message);
+            }
+          }
+        }
+
+        imgIndex++;
       }
     }
 
@@ -207,7 +237,12 @@ export async function createPostAction(encryptedPayload: string) {
 
       const base64Data = file.base64.replace(/^data:application\/\w+;base64,/, '');
       const buffer = Buffer.from(base64Data, 'base64');
-      const filePath = `${userId}/${postId}_${Date.now()}_${file.name}`;
+      
+      // Sanitize filename to prevent invalid key error on Supabase Storage (e.g. from special/unicode characters)
+      const cleanFileName = file.name
+        .replace(/[^a-zA-Z0-9._-]/g, '_')
+        .replace(/_+/g, '_');
+      const filePath = `${userId}/${postId}_${Date.now()}_${cleanFileName}`;
 
       const { error: uploadError } = await supabaseAdmin.storage
         .from('post-resources')
@@ -286,6 +321,26 @@ export async function createPostAction(encryptedPayload: string) {
         original_post_id: repostPostId,
         commentary: content || ''
       }]);
+    }
+
+    // 6. Handle post-level (coordinate-free) tags
+    if (tags && tags.length > 0) {
+      const postLevelTags = tags.filter((t: any) => t.imageIndex === undefined || t.imageIndex === null || t.imageIndex === -1);
+      if (postLevelTags.length > 0) {
+        const tagsToInsert = postLevelTags.map((t: any) => ({
+          post_id: postId,
+          post_media_id: null,
+          tagged_user_id: t.tagged_user_id,
+          x: null,
+          y: null
+        }));
+        const { error: tagInsertErr } = await supabaseAdmin
+          .from('post_tags')
+          .insert(tagsToInsert);
+        if (tagInsertErr) {
+          console.error("❌ [POST LEVEL TAG INSERT ERROR]:", tagInsertErr.message);
+        }
+      }
     }
 
     // Return the completed post data
@@ -387,7 +442,7 @@ export async function commentPostAction(encryptedPayload: string) {
       }])
       .select(`
         *,
-        author_profile:profiles:user_id (
+        author_profile:profiles!user_id (
           user_id,
           profile_pic_url,
           headline
@@ -485,7 +540,7 @@ export async function getPostCommentsAction(postId: string) {
       .from('post_comments')
       .select(`
         *,
-        author_profile:profiles:user_id (
+        author_profile:profiles!user_id (
           user_id,
           profile_pic_url,
           headline
@@ -600,6 +655,40 @@ export async function votePollAction(encryptedPayload: string) {
       throw new Error("This poll has already expired.");
     }
 
+    // Ensure the voter has a record in public.teachers to prevent database trigger notification crash
+    const { data: existingTeacher } = await supabaseAdmin
+      .from('teachers')
+      .select('id')
+      .eq('auth_id', userId)
+      .maybeSingle();
+
+    if (!existingTeacher) {
+      const { data: inst } = await supabaseAdmin
+        .from('institutions')
+        .select('name, email')
+        .eq('auth_id', userId)
+        .maybeSingle();
+
+      if (inst) {
+        console.log(`Creating dummy teacher record for institution voter: ${inst.name}`);
+        const { error: dummyErr } = await supabaseAdmin
+          .from('teachers')
+          .insert([{
+            auth_id: userId,
+            full_name: inst.name,
+            email: inst.email || 'institution@teacherdesk.com',
+            gender: 'Other',
+            qualification: 'N/A',
+            specialization: 'N/A',
+            experience: 'N/A',
+            is_active: true
+          }]);
+        if (dummyErr) {
+          console.error("❌ Failed to create safeguard teacher record:", dummyErr.message);
+        }
+      }
+    }
+
     // Insert vote. Unique check trigger check_poll_vote_limit will fail automatically if constraint is violated
     const { error: voteErr } = await supabaseAdmin
       .from('poll_votes')
@@ -711,6 +800,243 @@ export async function deletePostAction(encryptedPayload: string) {
     return encryptData({ success: true });
   } catch (err: any) {
     console.error("❌ [DELETE POST ERROR]:", err.message);
+    return encryptData({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Searches for users (teachers & institutions) to tag in a post.
+ */
+export async function searchUsersAction(encryptedPayload: string) {
+  try {
+    const { query } = decryptData(encryptedPayload);
+    if (!query || query.trim().length === 0) {
+      return encryptData({ success: true, data: [] });
+    }
+
+    const searchQuery = query.trim();
+
+    // Search teachers
+    const { data: teachers } = await supabaseAdmin
+      .from('teachers')
+      .select('auth_id, full_name, role_type')
+      .ilike('full_name', `%${searchQuery}%`)
+      .limit(10);
+
+    // Search institutions
+    const { data: institutions } = await supabaseAdmin
+      .from('institutions')
+      .select('auth_id, name, role_type')
+      .ilike('name', `%${searchQuery}%`)
+      .limit(10);
+
+    // Combine results
+    const results: any[] = [];
+    const userIds: string[] = [];
+
+    if (teachers) {
+      teachers.forEach((t: any) => {
+        results.push({
+          user_id: t.auth_id,
+          fullName: t.full_name,
+          role: 'teacher',
+        });
+        userIds.push(t.auth_id);
+      });
+    }
+
+    if (institutions) {
+      institutions.forEach((inst: any) => {
+        results.push({
+          user_id: inst.auth_id,
+          fullName: inst.name,
+          role: 'institution',
+        });
+        userIds.push(inst.auth_id);
+      });
+    }
+
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabaseAdmin
+        .from('profiles')
+        .select('user_id, profile_pic_url, headline')
+        .in('user_id', userIds);
+
+      if (profiles) {
+        results.forEach((res: any) => {
+          const profile = profiles.find((p: any) => p.user_id === res.user_id);
+          if (profile) {
+            res.profile_pic_url = profile.profile_pic_url;
+            res.headline = profile.headline;
+          }
+        });
+      }
+    }
+
+    return encryptData({ success: true, data: results });
+  } catch (err: any) {
+    console.error("❌ [SEARCH USERS ERROR]:", err.message);
+    return encryptData({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Fetches all tags for a specific post.
+ */
+export async function getPostTagsAction(postId: string) {
+  try {
+    if (!postId) throw new Error("Post ID is required.");
+
+    const { data: tags, error } = await supabaseAdmin
+      .from('post_tags')
+      .select(`
+        *,
+        tagged_user_profile:profiles!tagged_user_id (
+          user_id,
+          profile_pic_url,
+          headline,
+          role
+        )
+      `)
+      .eq('post_id', postId);
+
+    if (error) throw error;
+
+    // Resolve full names for tagged users
+    const resolvedTags = await Promise.all((tags || []).map(async (tag: any) => {
+      let fullName = "Member";
+      const uId = tag.tagged_user_id;
+      const role = tag.tagged_user_profile?.role;
+
+      if (role === 'teacher') {
+        const { data: teacherData } = await supabaseAdmin
+          .from('teachers')
+          .select('full_name')
+          .eq('auth_id', uId)
+          .single();
+        if (teacherData) fullName = teacherData.full_name;
+      } else if (role === 'institution' || role === 'institution_admin') {
+        const { data: instData } = await supabaseAdmin
+          .from('institutions')
+          .select('name')
+          .eq('auth_id', uId)
+          .single();
+        if (instData) fullName = instData.name;
+      }
+
+      return {
+        ...tag,
+        tagged_user_profile: {
+          ...tag.tagged_user_profile,
+          fullName
+        }
+      };
+    }));
+
+    return encryptData({ success: true, data: resolvedTags });
+  } catch (err: any) {
+    console.error("❌ [GET POST TAGS ERROR]:", err.message);
+    return encryptData({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Updates tags on an existing post. Deletes old tags and inserts new ones.
+ */
+export async function updatePostTagsAction(encryptedPayload: string) {
+  try {
+    const { userId, postId, tags } = decryptData(encryptedPayload);
+    if (!userId || !postId) throw new Error("Missing parameters.");
+
+    // Verify authorship or super admin role
+    const { data: post } = await supabaseAdmin
+      .from('posts')
+      .select('user_id')
+      .eq('id', postId)
+      .single();
+
+    if (!post) throw new Error("Post not found.");
+
+    if (post.user_id !== userId) {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
+      if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
+        throw new Error("Unauthorized post tag edit.");
+      }
+    }
+
+    // Delete existing tags
+    const { error: delErr } = await supabaseAdmin
+      .from('post_tags')
+      .delete()
+      .eq('post_id', postId);
+
+    if (delErr) throw delErr;
+
+    // Insert new tags
+    if (tags && tags.length > 0) {
+      const tagsToInsert = tags.map((t: any) => ({
+        post_id: postId,
+        post_media_id: t.post_media_id || null,
+        tagged_user_id: t.tagged_user_id,
+        x: t.x !== undefined && t.x !== null ? parseFloat(t.x.toFixed(2)) : null,
+        y: t.y !== undefined && t.y !== null ? parseFloat(t.y.toFixed(2)) : null
+      }));
+      const { error: insErr } = await supabaseAdmin
+        .from('post_tags')
+        .insert(tagsToInsert);
+
+      if (insErr) throw insErr;
+    }
+
+    return encryptData({ success: true });
+  } catch (err: any) {
+    console.error("❌ [UPDATE POST TAGS ERROR]:", err.message);
+    return encryptData({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Update post content (text body)
+ */
+export async function updatePostContentAction(encryptedPayload: string) {
+  try {
+    const { userId, postId, content } = decryptData(encryptedPayload);
+    if (!userId || !postId || content === undefined) throw new Error("Missing parameters.");
+
+    // Verify authorship or super admin role
+    const { data: post } = await supabaseAdmin
+      .from('posts')
+      .select('user_id')
+      .eq('id', postId)
+      .single();
+
+    if (!post) throw new Error("Post not found.");
+
+    if (post.user_id !== userId) {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
+      if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
+        throw new Error("Unauthorized post edit.");
+      }
+    }
+
+    const { error: updateErr } = await supabaseAdmin
+      .from('posts')
+      .update({ content: content.trim() })
+      .eq('id', postId);
+
+    if (updateErr) throw updateErr;
+
+    return encryptData({ success: true });
+  } catch (err: any) {
+    console.error("❌ [UPDATE POST CONTENT ERROR]:", err.message);
     return encryptData({ success: false, message: err.message });
   }
 }

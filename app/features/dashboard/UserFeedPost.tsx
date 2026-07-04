@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FaHeart, FaRegHeart, FaComment, FaShare, FaBookmark, FaRegBookmark, FaRetweet, FaTrash, FaDownload, FaFilePdf, FaClock } from 'react-icons/fa';
+// Removed duplicate FaUserTag import block
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'react-toastify';
@@ -15,11 +15,16 @@ import {
     savePostAction, 
     votePollAction,
     createPostAction,
-    deletePostAction
+    deletePostAction,
+    getPostTagsAction,
+    updatePostTagsAction,
+    updatePostContentAction,
+    searchUsersAction
 } from '@/app/actions/posts';
 import { decryptData, encryptData } from '@/lib/crypto';
 import { getProfileByUserIdAction } from '@/app/actions/profile';
 import Modal from '@/app/shared/Modal';
+import { FaHeart, FaRegHeart, FaComment, FaShare, FaBookmark, FaRegBookmark, FaRetweet, FaTrash, FaDownload, FaFilePdf, FaClock, FaUserTag, FaEllipsisV, FaTimes, FaWhatsapp, FaTwitter, FaEnvelope, FaInstagram, FaCopy, FaCheck, FaEdit } from 'react-icons/fa';
 
 interface UserFeedPostProps {
     id: string;
@@ -138,6 +143,190 @@ export default function UserFeedPost({
     // View More state for content
     const [isExpanded, setIsExpanded] = useState(false);
 
+    // Share modal states
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [copiedLink, setCopiedLink] = useState(false);
+
+    // Post Tags state
+    const [tagsList, setTagsList] = useState<any[]>([]);
+    const [showTags, setShowTags] = useState(false);
+
+    // Tag Editing states
+    const [isEditingTags, setIsEditingTags] = useState(false);
+    const [editTagsList, setEditTagsList] = useState<any[]>([]);
+    const [editActiveImageIdx, setEditActiveImageIdx] = useState<number>(0);
+    const [editPendingCoord, setEditPendingCoord] = useState<{ x: number, y: number } | null>(null);
+    const [editSearchQuery, setEditSearchQuery] = useState('');
+    const [editSearchResults, setEditSearchResults] = useState<any[]>([]);
+    const [editSearching, setEditSearching] = useState(false);
+    const [isSavingTags, setIsSavingTags] = useState(false);
+    const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+    const [isEditingPost, setIsEditingPost] = useState(false);
+    const [editedContent, setEditedContent] = useState(content || '');
+    const [isSavingPost, setIsSavingPost] = useState(false);
+
+    useEffect(() => {
+        const fetchTags = async () => {
+            if (id) {
+                try {
+                    const res = decryptData(await getPostTagsAction(id));
+                    if (res.success && res.data) {
+                        setTagsList(res.data);
+                    }
+                } catch (err) {
+                    console.error("Error fetching post tags:", err);
+                }
+            }
+        };
+        fetchTags();
+    }, [id]);
+
+    const getTagsForMedia = (mediaId: string) => {
+        return tagsList.filter((tag: any) => tag.post_media_id === mediaId);
+    };
+
+    const hasTagsForMedia = (mediaId: string) => {
+        return tagsList.some((tag: any) => tag.post_media_id === mediaId);
+    };
+
+    const openEditTagsModal = () => {
+        // Map current tags list to edit list format
+        const initialEditTags = tagsList.map((tag: any) => ({
+            id: tag.id,
+            post_id: tag.post_id,
+            post_media_id: tag.post_media_id,
+            tagged_user_id: tag.tagged_user_id,
+            fullName: tag.tagged_user_profile?.fullName || "Member",
+            x: tag.x,
+            y: tag.y,
+            profile_pic_url: tag.tagged_user_profile?.profile_pic_url,
+            headline: tag.tagged_user_profile?.headline
+        }));
+        setEditTagsList(initialEditTags);
+        setEditActiveImageIdx(0);
+        setEditPendingCoord(null);
+        setEditSearchQuery('');
+        setEditSearchResults([]);
+        setIsEditingTags(true);
+    };
+
+    const handleEditSearchUser = async (val: string) => {
+        setEditSearchQuery(val);
+        if (val.trim().length === 0) {
+            setEditSearchResults([]);
+            return;
+        }
+        setEditSearching(true);
+        try {
+            const payload = encryptData({ query: val });
+            const res = decryptData(await searchUsersAction(payload));
+            if (res.success && res.data) {
+                setEditSearchResults(res.data);
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setEditSearching(false);
+        }
+    };
+
+    const addEditTag = (user: any) => {
+        // If it's an image post, check coordinate and media association
+        let postMediaId = null;
+        if (post_type === 'image' && media && media[editActiveImageIdx]) {
+            postMediaId = media[editActiveImageIdx].id;
+        }
+
+        if (post_type === 'image' && !editPendingCoord) return;
+
+        // Check if user is already tagged
+        const isAlreadyTagged = editTagsList.some(
+            t => t.tagged_user_id === user.user_id && t.post_media_id === postMediaId
+        );
+        if (isAlreadyTagged) {
+            toast.warning("This user is already tagged.");
+            return;
+        }
+
+        const newTag = {
+            post_id: id,
+            post_media_id: postMediaId,
+            tagged_user_id: user.user_id,
+            fullName: user.fullName,
+            x: post_type === 'image' ? editPendingCoord!.x : null,
+            y: post_type === 'image' ? editPendingCoord!.y : null,
+            profile_pic_url: user.profile_pic_url,
+            headline: user.headline
+        };
+
+        setEditTagsList(prev => [...prev, newTag]);
+        setEditPendingCoord(null);
+        setEditSearchQuery('');
+        setEditSearchResults([]);
+    };
+
+    const removeEditTag = (tIdx: number) => {
+        setEditTagsList(prev => prev.filter((_, i) => i !== tIdx));
+    };
+
+    const handleEditImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        if ((e.target as HTMLElement).closest('.pointer-events-auto')) return;
+
+        const rect = e.currentTarget.getBoundingClientRect();
+        const clickX = ((e.clientX - rect.left) / rect.width) * 100;
+        const clickY = ((e.clientY - rect.top) / rect.height) * 100;
+        
+        setEditPendingCoord({ x: clickX, y: clickY });
+        setEditSearchQuery('');
+        setEditSearchResults([]);
+    };
+
+    const handleSaveTags = async () => {
+        setIsSavingTags(true);
+        try {
+            const payload = encryptData({
+                userId: currentUserId,
+                postId: id,
+                tags: editTagsList.map(t => ({
+                    post_media_id: t.post_media_id,
+                    tagged_user_id: t.tagged_user_id,
+                    x: t.x,
+                    y: t.y
+                }))
+            });
+
+            const res = decryptData(await updatePostTagsAction(payload));
+            if (res.success) {
+                toast.success("Tags updated successfully!");
+                
+                // Map the editTagsList back to the local tags format for rendering
+                const updatedTags = editTagsList.map(t => ({
+                    id: t.id || Math.random().toString(),
+                    post_id: id,
+                    post_media_id: t.post_media_id,
+                    tagged_user_id: t.tagged_user_id,
+                    x: t.x,
+                    y: t.y,
+                    tagged_user_profile: {
+                        user_id: t.tagged_user_id,
+                        fullName: t.fullName,
+                        profile_pic_url: t.profile_pic_url,
+                        headline: t.headline
+                    }
+                }));
+
+                setTagsList(updatedTags);
+                setIsEditingTags(false);
+            } else {
+                toast.error(res.message || "Failed to update tags.");
+            }
+        } catch (err) {
+            toast.error("An error occurred while saving tags.");
+        } finally {
+            setIsSavingTags(false);
+        }
+    };
+
     // Keep state updated if props change
     useEffect(() => {
         setLikes(likes_count);
@@ -184,9 +373,15 @@ export default function UserFeedPost({
     };
 
     const handleShare = () => {
-        const url = `${window.location.origin}/dashboard?post=${id}`;
-        navigator.clipboard.writeText(url).then(() => {
-            toast.success("Post link copied to clipboard!");
+        setShowShareModal(true);
+        setCopiedLink(false);
+    };
+
+    const copyToClipboard = (text: string) => {
+        navigator.clipboard.writeText(text).then(() => {
+            setCopiedLink(true);
+            toast.success("Link copied!");
+            setTimeout(() => setCopiedLink(false), 2000);
         }).catch(() => {
             toast.error("Failed to copy link.");
         });
@@ -272,6 +467,34 @@ export default function UserFeedPost({
             }
         } catch (err) {
             toast.error("An error occurred.");
+        }
+    };
+
+    const handleUpdatePostContent = async () => {
+        if (!editedContent.trim()) {
+            toast.error("Post content cannot be empty.");
+            return;
+        }
+
+        setIsSavingPost(true);
+        try {
+            const res = decryptData(await updatePostContentAction(encryptData({
+                userId: currentUserId,
+                postId: id,
+                content: editedContent
+            })));
+
+            if (res.success) {
+                toast.success("Post updated successfully!");
+                setIsEditingPost(false);
+                window.dispatchEvent(new CustomEvent('feed:reload'));
+            } else {
+                toast.error(res.message || "Failed to update post.");
+            }
+        } catch (err: any) {
+            toast.error(err.message || "An error occurred while saving.");
+        } finally {
+            setIsSavingPost(false);
         }
     };
 
@@ -389,15 +612,73 @@ export default function UserFeedPost({
                     </div>
                 </div>
 
-                {/* Right controls (Delete own post) */}
+                {/* Right controls (Options Dropdown) */}
                 {(user_id === currentUserId || author_profile?.role === 'super_admin') && (
-                    <button 
-                        onClick={handleDeletePost}
-                        title="Delete Post"
-                        className="text-gray-300 hover:text-red-500 p-2 rounded-full hover:bg-gray-50 transition-all opacity-0 group-hover/card:opacity-100"
-                    >
-                        <FaTrash className="text-sm" />
-                    </button>
+                    <div className="relative">
+                        <button 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setShowOptionsMenu(!showOptionsMenu);
+                            }}
+                            title="Post Options"
+                            className="text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-50 transition-all opacity-0 group-hover/card:opacity-100 focus:opacity-100"
+                        >
+                            <FaEllipsisV className="text-xs" />
+                        </button>
+                        
+                        <AnimatePresence>
+                            {showOptionsMenu && (
+                                <>
+                                    <div 
+                                        className="fixed inset-0 z-20 pointer-events-auto" 
+                                        onClick={() => setShowOptionsMenu(false)} 
+                                    />
+                                    <motion.div 
+                                        initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                        exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                                        className="absolute right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl z-30 py-1 w-32 text-xs flex flex-col pointer-events-auto"
+                                    >
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowOptionsMenu(false);
+                                                openEditTagsModal();
+                                            }}
+                                            className="flex items-center gap-2 px-3.5 py-2 hover:bg-gray-50 text-left text-gray-700 font-bold"
+                                        >
+                                            <FaUserTag className="text-teal-500" />
+                                            <span>Edit Tags</span>
+                                        </button>
+                                        
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowOptionsMenu(false);
+                                                setIsEditingPost(true);
+                                            }}
+                                            className="flex items-center gap-2 px-3.5 py-2 hover:bg-gray-50 text-left text-gray-700 font-bold border-t border-gray-50"
+                                        >
+                                            <FaEdit className="text-blue-500" />
+                                            <span>Edit Post</span>
+                                        </button>
+                                        
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowOptionsMenu(false);
+                                                handleDeletePost();
+                                            }}
+                                            className="flex items-center gap-2 px-3.5 py-2 hover:bg-red-50 hover:text-red-600 text-left text-gray-700 font-bold border-t border-gray-50"
+                                        >
+                                            <FaTrash className="text-red-500" />
+                                            <span>Delete Post</span>
+                                        </button>
+                                    </motion.div>
+                                </>
+                            )}
+                        </AnimatePresence>
+                    </div>
                 )}
             </div>
 
@@ -429,6 +710,34 @@ export default function UserFeedPost({
                     )}
                 </div>
             )}
+            {/* General Tagged users row */}
+            {tagsList && tagsList.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs text-gray-500">
+                    <span className="font-bold text-gray-400 text-[10px] uppercase tracking-wider">With:</span>
+                    {tagsList.map((tag: any) => (
+                        <a 
+                            key={tag.id}
+                            href={`/profile?id=${tag.tagged_user_id}`}
+                            onClick={(e) => {
+                                if (tag.tagged_user_id === currentUserId) {
+                                    // Navigate to own profile
+                                } else {
+                                    e.preventDefault();
+                                    toast.info(`${tag.tagged_user_profile?.fullName || "Member"} (${tag.tagged_user_profile?.role || "user"})`);
+                                }
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-50 border border-gray-100 hover:bg-teal-50 hover:border-teal-100 rounded-full text-[9px] font-bold text-gray-600 transition-all shadow-sm"
+                        >
+                            <UserAvatar 
+                                src={tag.tagged_user_profile?.profile_pic_url} 
+                                name={tag.tagged_user_profile?.fullName} 
+                                className="w-3.5 h-3.5 rounded-full object-cover" 
+                            />
+                            <span>{tag.tagged_user_profile?.fullName || "Member"}</span>
+                        </a>
+                    ))}
+                </div>
+            )}
 
             {/* Rendering IMAGE posts */}
             {post_type === 'image' && media && media.length > 0 && (
@@ -436,13 +745,80 @@ export default function UserFeedPost({
                     media.length === 1 ? 'grid-cols-1' : media.length === 2 ? 'grid-cols-2' : 'grid-cols-3'
                 }`}>
                     {media.map((item) => (
-                        <div key={item.id} className="relative aspect-video bg-gray-50">
+                        <div 
+                            key={item.id} 
+                            className="relative aspect-video bg-gray-50 select-none cursor-pointer"
+                            onClick={() => {
+                                if (hasTagsForMedia(item.id)) {
+                                    setShowTags(!showTags);
+                                }
+                            }}
+                        >
                             <img 
                                 src={item.file_url} 
                                 alt={item.file_name} 
-                                className="w-full h-full object-cover cursor-pointer hover:opacity-95 transition-opacity"
+                                className="w-full h-full object-cover hover:opacity-95 transition-opacity pointer-events-none"
                                 loading="lazy"
                             />
+
+                            {/* Tag indicator overlay (Instagram-style tag icon in bottom-left corner) */}
+                            {hasTagsForMedia(item.id) && (
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowTags(!showTags);
+                                    }}
+                                    className="absolute bottom-2 left-2 bg-black/60 hover:bg-black text-white p-1.5 rounded-full transition-all shadow z-10"
+                                    title="Tagged people"
+                                >
+                                    <FaUserTag className="text-[10px]" />
+                                </button>
+                            )}
+
+                            {/* Overlaid tooltips */}
+                            {showTags && getTagsForMedia(item.id).map((tag: any) => (
+                                <div
+                                    key={tag.id}
+                                    style={{
+                                        position: 'absolute',
+                                        left: `${tag.x}%`,
+                                        top: `${tag.y}%`,
+                                        transform: 'translate(-50%, -100%)',
+                                        zIndex: 20
+                                    }}
+                                    className="pointer-events-auto"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    <a 
+                                        href={`/profile?id=${tag.tagged_user_id}`}
+                                        className="relative group/tag cursor-pointer block"
+                                        onClick={(e) => {
+                                            if (tag.tagged_user_id === currentUserId) {
+                                                // Default navigation to own profile
+                                            } else {
+                                                e.preventDefault();
+                                                toast.info(`${tag.tagged_user_profile?.fullName || "Member"} is tagged here! (${tag.tagged_user_profile?.role || "user"})`);
+                                            }
+                                        }}
+                                    >
+                                        <div className="relative">
+                                            {/* Instagram Style Tooltip */}
+                                            <div className="bg-black/85 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex flex-col items-center select-none animate-fade-in relative transition-all hover:scale-105">
+                                                <span className="whitespace-nowrap">{tag.tagged_user_profile?.fullName || "Member"}</span>
+                                                {tag.tagged_user_profile?.headline && (
+                                                    <span className="text-[8px] text-gray-300 font-normal leading-none max-w-[120px] truncate mt-0.5">
+                                                        {tag.tagged_user_profile.headline}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            
+                                            {/* Small tooltip pointer/caret */}
+                                            <div className="w-1.5 h-1.5 bg-black/85 rotate-45 mx-auto -mt-0.5 shadow-md"></div>
+                                        </div>
+                                    </a>
+                                </div>
+                            ))}
                         </div>
                     ))}
                 </div>
@@ -752,6 +1128,478 @@ export default function UserFeedPost({
                                 <p className="text-center py-4 text-xs font-semibold text-gray-400">Be the first to share your thoughts!</p>
                             )}
                         </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Edit Tags Modal */}
+            <AnimatePresence>
+                {isEditingTags && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.95, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.95, y: 20 }}
+                            className="bg-white rounded-2xl shadow-2xl border border-gray-100 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col pointer-events-auto"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between border-b border-gray-100 p-4">
+                                <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                                    <span>👥</span> Edit Post Tags
+                                    {post_type === 'image' && media && media.length > 0 && (
+                                        <span className="text-xs text-gray-400 font-semibold">(Image {editActiveImageIdx + 1} of {media.length})</span>
+                                    )}
+                                </h3>
+                                <button
+                                    onClick={() => setIsEditingTags(false)}
+                                    className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                                >
+                                    <FaTimes className="text-sm" />
+                                </button>
+                            </div>
+
+                            {/* Modal Body */}
+                            <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-3 gap-6 p-6">
+                                {/* Left/Center Container */}
+                                <div className="md:col-span-2 flex flex-col gap-3">
+                                    {post_type === 'image' && media && media[editActiveImageIdx] ? (
+                                        <>
+                                            <p className="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Click on the photo to tag people</p>
+                                            <div 
+                                                className="relative bg-gray-50 border border-gray-100 rounded-xl overflow-hidden cursor-crosshair aspect-video flex items-center justify-center select-none"
+                                                onClick={handleEditImageClick}
+                                            >
+                                                <img 
+                                                    src={media[editActiveImageIdx].file_url} 
+                                                    alt="Tagging preview" 
+                                                    className="max-w-full max-h-[60vh] object-contain pointer-events-none"
+                                                />
+
+                                                {/* Existing tags on this image */}
+                                                {editTagsList.filter(t => t.post_media_id === media[editActiveImageIdx].id).map((tag) => {
+                                                    const realIdx = editTagsList.indexOf(tag);
+                                                    return (
+                                                        <div
+                                                            key={realIdx}
+                                                            style={{
+                                                                position: 'absolute',
+                                                                left: `${tag.x}%`,
+                                                                top: `${tag.y}%`,
+                                                                transform: 'translate(-50%, -100%)',
+                                                            }}
+                                                            className="bg-black/85 text-white text-[10px] font-semibold px-2 py-0.5 rounded shadow flex items-center gap-1 pointer-events-auto"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <span>{tag.fullName}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeEditTag(realIdx)}
+                                                                className="text-gray-400 hover:text-red-400 ml-1 font-bold text-xs"
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })}
+
+                                                {/* Pending tag search popup */}
+                                                {editPendingCoord && (
+                                                    <div 
+                                                        style={{ 
+                                                            position: 'absolute', 
+                                                            left: `${editPendingCoord.x}%`, 
+                                                            top: `${editPendingCoord.y}%`,
+                                                            transform: 'translate(-50%, 8px)',
+                                                            zIndex: 50
+                                                        }}
+                                                        className="bg-white rounded-lg shadow-xl border border-gray-200 p-2.5 w-52 flex flex-col gap-1.5 pointer-events-auto"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <input 
+                                                            type="text"
+                                                            placeholder="Who is this?"
+                                                            value={editSearchQuery}
+                                                            onChange={(e) => handleEditSearchUser(e.target.value)}
+                                                            className="text-xs p-1.5 border border-gray-200 rounded focus:outline-none w-full font-semibold focus:ring-1 focus:ring-blue-400"
+                                                            autoFocus
+                                                        />
+                                                        {editSearching && <span className="text-[10px] text-gray-400 animate-pulse">Searching...</span>}
+                                                        {!editSearching && editSearchResults.length > 0 && (
+                                                            <div className="max-h-28 overflow-y-auto flex flex-col border border-gray-100 rounded">
+                                                                {editSearchResults.map((user: any) => (
+                                                                    <button
+                                                                        key={user.user_id}
+                                                                        type="button"
+                                                                        onClick={() => addEditTag(user)}
+                                                                        className="flex items-center gap-2 p-1.5 hover:bg-slate-50 text-left w-full text-xs transition-colors"
+                                                                    >
+                                                                        <UserAvatar 
+                                                                            src={user.profile_pic_url} 
+                                                                            name={user.fullName} 
+                                                                            className="w-5 h-5 rounded-full" 
+                                                                        />
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <p className="truncate font-semibold text-gray-700 text-[11px]">{user.fullName}</p>
+                                                                            <p className="truncate text-gray-400 text-[9px]">{user.headline || user.role}</p>
+                                                                        </div>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        {!editSearching && editSearchQuery.trim().length > 0 && editSearchResults.length === 0 && (
+                                                            <span className="text-[10px] text-red-500">No users found.</span>
+                                                        )}
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => setEditPendingCoord(null)}
+                                                            className="text-[10px] text-gray-400 hover:text-red-500 font-bold self-end"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        // Non-image post tagging (list-based)
+                                        <div className="relative bg-gray-50 border border-gray-200/60 rounded-xl p-6 flex flex-col gap-4 min-h-[320px] justify-center items-center">
+                                            <div className="text-center space-y-1 max-w-sm">
+                                                <div className="w-12 h-12 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center text-xl mx-auto font-bold">👥</div>
+                                                <h4 className="font-bold text-gray-800 text-sm">Tag People on Post</h4>
+                                                <p className="text-xs text-gray-400">Search and select teachers or institutions to tag them globally on this post.</p>
+                                            </div>
+
+                                            <div className="w-full max-w-md relative pointer-events-auto">
+                                                <input 
+                                                    type="text"
+                                                    placeholder="Search name to tag..."
+                                                    value={editSearchQuery}
+                                                    onChange={(e) => handleEditSearchUser(e.target.value)}
+                                                    className="text-xs p-2.5 border border-gray-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-400 w-full shadow-sm"
+                                                    autoFocus
+                                                />
+                                                {editSearching && <span className="absolute right-3 top-3 text-[10px] text-gray-400 animate-pulse">Searching...</span>}
+                                                
+                                                {!editSearching && editSearchResults.length > 0 && (
+                                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl max-h-48 overflow-y-auto flex flex-col z-50 p-1">
+                                                        {editSearchResults.map((user: any) => (
+                                                            <button
+                                                                key={user.user_id}
+                                                                type="button"
+                                                                onClick={() => addEditTag(user)}
+                                                                className="flex items-center gap-2.5 p-2 hover:bg-teal-50/50 text-left w-full text-xs transition-colors rounded-lg"
+                                                            >
+                                                                <UserAvatar 
+                                                                    src={user.profile_pic_url} 
+                                                                    name={user.fullName} 
+                                                                    className="w-6 h-6 rounded-full" 
+                                                                />
+                                                                <div className="min-w-0 flex-1">
+                                                                    <p className="truncate font-bold text-gray-700 text-xs">{user.fullName}</p>
+                                                                    <p className="truncate text-gray-400 text-[10px]">{user.headline || user.role}</p>
+                                                                </div>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {!editSearching && editSearchQuery.trim().length > 0 && editSearchResults.length === 0 && (
+                                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl p-3 text-center text-[11px] text-red-500 z-50">
+                                                        No users found.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Sidebar list */}
+                                <div className="border-t md:border-t-0 md:border-l border-gray-100 pt-4 md:pt-0 md:pl-6 flex flex-col gap-4">
+                                    <h4 className="font-bold text-gray-700 text-xs uppercase tracking-wider">Tagged People</h4>
+                                    <div className="flex-1 flex flex-col gap-2 max-h-[35vh] md:max-h-none overflow-y-auto">
+                                        {/* Filter list for images to only show tags on the current active image */}
+                                        {editTagsList.filter(t => post_type !== 'image' || t.post_media_id === media[editActiveImageIdx]?.id).length === 0 ? (
+                                            <p className="text-xs text-gray-400 italic">No one tagged yet.</p>
+                                        ) : (
+                                            editTagsList
+                                                .filter(t => post_type !== 'image' || t.post_media_id === media[editActiveImageIdx]?.id)
+                                                .map((tag) => {
+                                                    const realIdx = editTagsList.indexOf(tag);
+                                                    return (
+                                                        <div key={realIdx} className="flex items-center justify-between p-2 hover:bg-gray-50 border border-gray-100 rounded-lg transition-colors">
+                                                            <span className="text-xs font-semibold text-gray-700">{tag.fullName}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeEditTag(realIdx)}
+                                                                className="text-gray-400 hover:text-red-500 hover:bg-red-50 p-1 rounded-full transition-all"
+                                                            >
+                                                                <FaTimes className="text-[10px]" />
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="border-t border-gray-100 p-4 flex justify-end gap-3">
+                                {post_type === 'image' && media && editActiveImageIdx > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setEditActiveImageIdx(prev => prev - 1);
+                                            setEditPendingCoord(null);
+                                        }}
+                                        className="border border-gray-200 text-gray-600 hover:bg-gray-50 px-4 py-2 rounded-lg text-xs font-bold transition-all"
+                                    >
+                                        Previous Image
+                                    </button>
+                                )}
+                                {post_type === 'image' && media && editActiveImageIdx < media.length - 1 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setEditActiveImageIdx(prev => prev + 1);
+                                            setEditPendingCoord(null);
+                                        }}
+                                        className="bg-[var(--color-primary)] text-white hover:opacity-90 px-4 py-2 rounded-lg text-xs font-bold transition-all"
+                                    >
+                                        Next Image
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEditingTags(false)}
+                                    className="border border-gray-200 text-gray-600 hover:bg-gray-50 px-4 py-2 rounded-lg text-xs font-bold transition-all"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={isSavingTags}
+                                    onClick={handleSaveTags}
+                                    className="bg-gray-800 text-white hover:bg-gray-900 px-6 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-40"
+                                >
+                                    {isSavingTags ? 'Saving...' : 'Save Tags'}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Interactive & Innovative Share Modal */}
+            <AnimatePresence>
+                {showShareModal && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.95, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.95, y: 20 }}
+                            className="bg-white/95 rounded-3xl shadow-2xl border border-gray-100 w-full max-w-2xl overflow-hidden flex flex-col pointer-events-auto"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between border-b border-gray-100/50 p-5 bg-gray-50/50">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-bold">🔗</span>
+                                    <div>
+                                        <h3 className="font-bold text-gray-800 text-sm">Share this Post</h3>
+                                        <p className="text-[10px] text-gray-400 font-semibold">Spread knowledge with your network</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setShowShareModal(false)}
+                                    className="text-gray-400 hover:text-gray-600 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
+                                >
+                                    <FaTimes className="text-sm" />
+                                </button>
+                            </div>
+
+                            {/* Modal Body */}
+                            <div className="p-6 grid grid-cols-1 md:grid-cols-5 gap-6">
+                                {/* Left Side: Innovative QR Card */}
+                                <div className="md:col-span-2 flex flex-col items-center justify-center bg-gradient-to-br from-indigo-50/60 to-purple-50/60 border border-indigo-100/30 rounded-2xl p-4 text-center group/qr relative overflow-hidden select-none">
+                                    {/* Glassmorphic overlay reflection */}
+                                    <div className="absolute inset-0 bg-white/20 opacity-0 group-hover/qr:opacity-100 transition-opacity pointer-events-none" />
+                                    
+                                    <div className="bg-white p-3.5 rounded-2xl shadow-md border border-indigo-100/50 relative z-10 transition-transform duration-300 group-hover/qr:scale-105">
+                                        <img 
+                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(`${window.location.origin}/dashboard?post=${id}`)}`} 
+                                            alt="Post QR Code"
+                                            className="w-28 h-28 object-contain"
+                                        />
+                                    </div>
+                                    <div className="mt-3.5 relative z-10">
+                                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full uppercase tracking-wide">Scan & Share</span>
+                                        <p className="text-[9px] text-gray-400 mt-1 font-semibold">Scan with phone camera to view</p>
+                                    </div>
+                                </div>
+
+                                {/* Right Side: Share Channels & Link Copier */}
+                                <div className="md:col-span-3 flex flex-col justify-between gap-5">
+                                    {/* Link Copier Row */}
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Post Link</label>
+                                        <div className="flex items-center gap-2 p-1.5 bg-gray-50 border border-gray-200/80 rounded-xl">
+                                            <input 
+                                                type="text"
+                                                readOnly
+                                                value={`${window.location.origin}/dashboard?post=${id}`}
+                                                className="bg-transparent text-xs text-gray-600 outline-none flex-1 px-1.5 font-medium truncate"
+                                            />
+                                            <button
+                                                onClick={() => copyToClipboard(`${window.location.origin}/dashboard?post=${id}`)}
+                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
+                                                    copiedLink 
+                                                        ? 'bg-emerald-500 text-white shadow-emerald-100' 
+                                                        : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100'
+                                                }`}
+                                            >
+                                                {copiedLink ? (
+                                                    <>
+                                                        <FaCheck />
+                                                        <span>Copied</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <FaCopy />
+                                                        <span>Copy</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Share Channels Grid */}
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Share directly to</label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {/* WhatsApp */}
+                                            <a 
+                                                href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`Check out this post on Teacher Desk: ${window.location.origin}/dashboard?post=${id}`)}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex flex-col items-center justify-center gap-1.5 p-2.5 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-100/50 rounded-xl transition-all group/btn"
+                                            >
+                                                <FaWhatsapp className="text-xl text-emerald-600 transition-transform group-hover/btn:scale-110" />
+                                                <span className="text-[9px] font-bold text-emerald-700">WhatsApp</span>
+                                            </a>
+
+                                            {/* Twitter */}
+                                            <a 
+                                                href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(`${window.location.origin}/dashboard?post=${id}`)}&text=${encodeURIComponent('Check out this post on Teacher Desk!')}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex flex-col items-center justify-center gap-1.5 p-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-100 rounded-xl transition-all group/btn"
+                                            >
+                                                <FaTwitter className="text-xl text-gray-800 transition-transform group-hover/btn:scale-110" />
+                                                <span className="text-[9px] font-bold text-gray-700">Twitter</span>
+                                            </a>
+
+                                            {/* Email */}
+                                            <a 
+                                                href={`mailto:?subject=${encodeURIComponent('Teacher Desk Post')}&body=${encodeURIComponent(`Hi, check out this educational update on Teacher Desk: ${window.location.origin}/dashboard?post=${id}`)}`}
+                                                className="flex flex-col items-center justify-center gap-1.5 p-2.5 bg-blue-50 hover:bg-blue-100/80 border border-blue-100/50 rounded-xl transition-all group/btn"
+                                            >
+                                                <FaEnvelope className="text-xl text-blue-600 transition-transform group-hover/btn:scale-110" />
+                                                <span className="text-[9px] font-bold text-blue-700">Email</span>
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                    {/* Instagram Sticker Help Card */}
+                                    <div className="flex items-start gap-2.5 bg-amber-50/40 border border-amber-100/50 rounded-2xl p-3">
+                                        <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-amber-400 to-pink-500 text-white flex items-center justify-center text-xs shrink-0 shadow-sm">
+                                            <FaInstagram />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <h4 className="text-[10px] font-bold text-amber-800">Share to Instagram</h4>
+                                            <p className="text-[9px] text-amber-700 mt-0.5 leading-relaxed font-semibold">
+                                                Copy the link, open Instagram, and paste it using the **Link Sticker** on your Story or update your Bio!
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Edit Post Modal */}
+            <AnimatePresence>
+                {isEditingPost && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.95, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.95, y: 20 }}
+                            className="bg-white rounded-2xl shadow-2xl border border-gray-100 w-full max-w-lg overflow-hidden flex flex-col pointer-events-auto"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between border-b border-gray-100 p-4 bg-slate-50">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-bold">📝</span>
+                                    <div>
+                                        <h3 className="font-bold text-gray-800 text-sm">Edit Post</h3>
+                                        <p className="text-[10px] text-gray-400 font-semibold">Update your update or announcement</p>
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={() => setIsEditingPost(false)}
+                                    className="text-gray-400 hover:text-red-500 hover:bg-slate-100 p-1.5 rounded-full transition-colors"
+                                >
+                                    <FaTimes size={14} />
+                                </button>
+                            </div>
+
+                            {/* Modal Body */}
+                            <div className="p-5 flex flex-col gap-4">
+                                <textarea
+                                    value={editedContent}
+                                    onChange={(e) => setEditedContent(e.target.value)}
+                                    placeholder="What's on your mind?"
+                                    rows={6}
+                                    className="w-full border border-gray-200 rounded-xl p-3 text-xs outline-none focus:border-[var(--color-primary)] transition duration-200 resize-none leading-relaxed"
+                                />
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="flex items-center justify-end gap-3 p-4 bg-slate-50 border-t border-gray-100">
+                                <button
+                                    onClick={() => setIsEditingPost(false)}
+                                    className="text-xs font-bold text-gray-500 hover:text-gray-700 px-4 py-2 hover:bg-gray-100 rounded-lg transition"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleUpdatePostContent}
+                                    disabled={isSavingPost}
+                                    className="bg-[var(--color-primary)] hover:bg-[var(--color-secondary)] text-white text-xs font-bold px-5 py-2.5 rounded-lg transition duration-200 shadow-md disabled:opacity-50 flex items-center gap-1.5"
+                                >
+                                    {isSavingPost ? "Saving..." : "Save Changes"}
+                                </button>
+                            </div>
+                        </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>
