@@ -1,8 +1,9 @@
 // src/app/features/dashboard/UserFeedPost.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { EmojiPicker } from '@/components/ui/EmojiPicker';
 // Removed duplicate FaUserTag import block
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { formatDistanceToNow } from 'date-fns';
@@ -19,10 +20,12 @@ import {
     getPostTagsAction,
     updatePostTagsAction,
     updatePostContentAction,
-    searchUsersAction
+    searchUsersAction,
+    editCommentAction
 } from '@/app/actions/posts';
 import { decryptData, encryptData } from '@/lib/crypto';
 import { getProfileByUserIdAction } from '@/app/actions/profile';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import Modal from '@/app/shared/Modal';
 import { FaHeart, FaRegHeart, FaComment, FaShare, FaBookmark, FaRegBookmark, FaRetweet, FaTrash, FaDownload, FaFilePdf, FaClock, FaUserTag, FaEllipsisV, FaTimes, FaWhatsapp, FaTwitter, FaEnvelope, FaInstagram, FaCopy, FaCheck, FaEdit } from 'react-icons/fa';
 
@@ -114,6 +117,78 @@ export default function UserFeedPost({
     const [newComment, setNewComment] = useState('');
     const [isSavingComment, setIsSavingComment] = useState(false);
     const [totalComments, setTotalComments] = useState(comments_count);
+
+    const [replyingToId, setReplyingToId] = useState<string | null>(null);
+    const [replyText, setReplyText] = useState('');
+    const [isSavingReply, setIsSavingReply] = useState(false);
+
+    const commentInputRef = useRef<HTMLInputElement>(null);
+
+    const handleCommentEmojiSelect = (emoji: string) => {
+        if (commentInputRef.current) {
+            const input = commentInputRef.current;
+            const start = input.selectionStart || 0;
+            const end = input.selectionEnd || 0;
+            const text = input.value;
+            const nextComment = text.substring(0, start) + emoji + text.substring(end);
+            setNewComment(nextComment);
+            
+            setTimeout(() => {
+                input.focus();
+                input.setSelectionRange(start + emoji.length, start + emoji.length);
+            }, 0);
+        } else {
+            setNewComment(prev => prev + emoji);
+        }
+    };
+
+    const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+    const [editingText, setEditingText] = useState('');
+    const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+    const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
+    const [isDeletingComment, setIsDeletingComment] = useState(false);
+    const [showDeletePostConfirm, setShowDeletePostConfirm] = useState(false);
+
+    const editInputRef = useRef<HTMLInputElement>(null);
+
+    const handleEditEmojiSelect = (emoji: string) => {
+        if (editInputRef.current) {
+            const input = editInputRef.current;
+            const start = input.selectionStart || 0;
+            const end = input.selectionEnd || 0;
+            const text = input.value;
+            const nextEdit = text.substring(0, start) + emoji + text.substring(end);
+            setEditingText(nextEdit);
+            
+            setTimeout(() => {
+                input.focus();
+                input.setSelectionRange(start + emoji.length, start + emoji.length);
+            }, 0);
+        } else {
+            setEditingText(prev => prev + emoji);
+        }
+    };
+
+    const editPostTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+    const handleEditPostEmojiSelect = (emoji: string) => {
+        if (editPostTextareaRef.current) {
+            const textarea = editPostTextareaRef.current;
+            const start = textarea.selectionStart || 0;
+            const end = textarea.selectionEnd || 0;
+            const text = textarea.value;
+            const nextContent = text.substring(0, start) + emoji + text.substring(end);
+            setEditedContent(nextContent);
+            
+            setTimeout(() => {
+                textarea.focus();
+                textarea.setSelectionRange(start + emoji.length, start + emoji.length);
+            }, 0);
+        } else {
+            setEditedContent(prev => prev + emoji);
+        }
+    };
 
     // Logged-in user profile cache for comments author preview
     const [profile, setProfile] = useState<any>(null);
@@ -436,9 +511,67 @@ export default function UserFeedPost({
         }
     };
 
-    const handleDeleteComment = async (commentId: string) => {
-        if (!confirm("Are you sure you want to delete this comment?")) return;
+    const handleAddReply = async (e: React.FormEvent, parentId: string) => {
+        e.preventDefault();
+        if (!replyText.trim()) return;
 
+        setIsSavingReply(true);
+        try {
+            const payload = encryptData({
+                userId: currentUserId,
+                postId: id,
+                commentText: replyText.trim(),
+                parentCommentId: parentId
+            });
+            const res = decryptData(await commentPostAction(payload));
+            if (res.success && res.data) {
+                setCommentsList(prev => [...prev, res.data]);
+                setReplyText('');
+                setReplyingToId(null);
+                setTotalComments(prev => prev + 1);
+                toast.success("Reply added.");
+            } else {
+                toast.error(res.message || "Failed to add reply.");
+            }
+        } catch (err) {
+            toast.error("An error occurred.");
+        } finally {
+            setIsSavingReply(false);
+        }
+    };
+
+    const handleEditComment = async (e: React.FormEvent, commentId: string) => {
+        e.preventDefault();
+        if (!editingText.trim()) return;
+
+        setIsSavingEdit(true);
+        try {
+            const payload = encryptData({
+                userId: currentUserId,
+                commentId,
+                commentText: editingText.trim()
+            });
+            const res = decryptData(await editCommentAction(payload));
+            if (res.success && res.data) {
+                setCommentsList(prev => prev.map(c => c.id === commentId ? { ...c, comment_text: res.data.comment_text, updated_at: res.data.updated_at } : c));
+                setEditingCommentId(null);
+                setEditingText('');
+                toast.success("Comment updated.");
+            } else {
+                toast.error(res.message || "Failed to update comment.");
+            }
+        } catch (err) {
+            toast.error("An error occurred.");
+        } finally {
+            setIsSavingEdit(false);
+        }
+    };
+
+    const handleDeleteCommentClick = (commentId: string) => {
+        setCommentToDelete(commentId);
+    };
+
+    const executeDeleteComment = async (commentId: string) => {
         try {
             const res = decryptData(await deleteCommentAction(encryptData({ userId: currentUserId, commentId })));
             if (res.success) {
@@ -453,14 +586,11 @@ export default function UserFeedPost({
         }
     };
 
-    const handleDeletePost = async () => {
-        if (!confirm("Are you sure you want to delete this post? This cannot be undone.")) return;
-
+    const executeDeletePost = async () => {
         try {
             const res = decryptData(await deletePostAction(encryptData({ userId: currentUserId, postId: id })));
             if (res.success) {
                 toast.success("Post deleted.");
-                // Reload feed
                 window.dispatchEvent(new CustomEvent('feed:reload'));
             } else {
                 toast.error(res.message || "Failed to delete post.");
@@ -667,7 +797,7 @@ export default function UserFeedPost({
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setShowOptionsMenu(false);
-                                                handleDeletePost();
+                                                setShowDeletePostConfirm(true);
                                             }}
                                             className="flex items-center gap-2 px-3.5 py-2 hover:bg-red-50 hover:text-red-600 text-left text-gray-700 font-bold border-t border-gray-50"
                                         >
@@ -1064,21 +1194,25 @@ export default function UserFeedPost({
                             />
                             <div className="flex-grow relative">
                                 <input
+                                    ref={commentInputRef}
                                     type="text"
                                     value={newComment}
                                     onChange={(e) => setNewComment(e.target.value)}
                                     placeholder="Add a comment..."
-                                    className="w-full text-xs text-gray-700 border border-gray-200 bg-gray-50 hover:bg-white focus:bg-white rounded-full px-4 py-2.5 outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
+                                    className="w-full text-xs text-gray-700 border border-gray-200 bg-gray-50 hover:bg-white focus:bg-white rounded-full pl-4 pr-20 py-2.5 outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
                                     required
                                     maxLength={500}
                                 />
-                                <button
-                                    type="submit"
-                                    disabled={isSavingComment || !newComment.trim()}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-primary)] hover:text-blue-700 disabled:opacity-40 font-bold text-xs"
-                                >
-                                    {isSavingComment ? 'Sending...' : 'Post'}
-                                </button>
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                                    <EmojiPicker onEmojiSelect={handleCommentEmojiSelect} align="right" buttonClassName="hover:bg-gray-100 p-1 rounded-full" />
+                                    <button
+                                        type="submit"
+                                        disabled={isSavingComment || !newComment.trim()}
+                                        className="text-[var(--color-primary)] hover:text-blue-700 disabled:opacity-40 font-bold text-xs"
+                                    >
+                                        {isSavingComment ? 'Sending...' : 'Post'}
+                                    </button>
+                                </div>
                             </div>
                         </form>
 
@@ -1089,41 +1223,253 @@ export default function UserFeedPost({
                                     <span className="w-5 h-5 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin"></span>
                                 </div>
                             ) : commentsList.length > 0 ? (
-                                commentsList.map((c) => (
-                                    <div key={c.id} className="flex gap-2.5 items-start group/comment">
-                                        <UserAvatar 
-                                            src={c.author_profile?.profile_pic_url} 
-                                            name={c.author_profile?.fullName || "Member"}
-                                            className="w-8 h-8 rounded-full border border-gray-100 mt-0.5"
-                                        />
-                                        <div className="flex-grow bg-gray-50 rounded-2xl p-3 max-w-[85%]">
-                                            <div className="flex items-center justify-between mb-1">
-                                                <div>
-                                                    <h5 className="font-bold text-xs text-gray-800 leading-none">
-                                                        {c.author_profile?.fullName || "Member"}
-                                                    </h5>
-                                                    <p className="text-[9px] text-gray-400 mt-1">
-                                                        {c.author_profile?.headline || "Educator"}
-                                                    </p>
-                                                </div>
-                                                <span className="text-[9px] text-gray-400 font-medium">
-                                                    {formatDistanceToNow(new Date(c.created_at), { addSuffix: false })}
-                                                </span>
-                                            </div>
-                                            <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{c.comment_text}</p>
-                                        </div>
+                                (() => {
+                                    const rootComments = commentsList.filter(c => !c.parent_comment_id);
+                                    return rootComments.map((c) => {
+                                        const replies = commentsList.filter(reply => reply.parent_comment_id === c.id);
+                                        return (
+                                            <div key={c.id} className="flex flex-col gap-1.5">
+                                                <div className="flex gap-2.5 items-start group/comment">
+                                                    <UserAvatar 
+                                                        src={c.author_profile?.profile_pic_url} 
+                                                        name={c.author_profile?.fullName || "Member"}
+                                                        className="w-8 h-8 rounded-full border border-gray-100 mt-0.5"
+                                                    />
+                                                    <div className="flex-grow bg-gray-50 rounded-2xl p-3 max-w-[85%]">
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <div>
+                                                                <h5 className="font-bold text-xs text-gray-800 leading-none">
+                                                                    {c.author_profile?.fullName || "Member"}
+                                                                </h5>
+                                                                <p className="text-[9px] text-gray-400 mt-1">
+                                                                    {c.author_profile?.headline || "Educator"}
+                                                                </p>
+                                                            </div>
+                                                            <span className="text-[9px] text-gray-400 font-medium">
+                                                                {formatDistanceToNow(new Date(c.created_at), { addSuffix: false })}
+                                                            </span>
+                                                        </div>
 
-                                        {/* Action buttons on comment hover (e.g. Delete own comment) */}
-                                        {(c.user_id === currentUserId || author_profile?.role === 'super_admin') && (
-                                            <button 
-                                                onClick={() => handleDeleteComment(c.id)}
-                                                className="text-gray-300 hover:text-red-500 p-1.5 rounded-full hover:bg-gray-100 transition-colors opacity-0 group-hover/comment:opacity-100 self-center"
-                                            >
-                                                <FaTrash className="text-[10px]" />
-                                            </button>
-                                        )}
-                                    </div>
-                                ))
+                                                        {editingCommentId === c.id ? (
+                                                            <form onSubmit={(e) => handleEditComment(e, c.id)} className="flex items-center gap-2 mt-1">
+                                                                <div className="relative flex-grow flex items-center">
+                                                                    <input
+                                                                        ref={editInputRef}
+                                                                        type="text"
+                                                                        value={editingText}
+                                                                        onChange={(e) => setEditingText(e.target.value)}
+                                                                        className="w-full text-xs text-gray-700 border border-gray-200 bg-white rounded-full pl-3 pr-16 py-1.5 outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
+                                                                        required
+                                                                        maxLength={500}
+                                                                        autoFocus
+                                                                    />
+                                                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                                                        <EmojiPicker onEmojiSelect={handleEditEmojiSelect} align="right" buttonClassName="hover:bg-gray-100 p-0.5 rounded-full" />
+                                                                        <button
+                                                                            type="submit"
+                                                                            disabled={isSavingEdit || !editingText.trim()}
+                                                                            className="text-[var(--color-primary)] hover:text-blue-700 disabled:opacity-40 font-bold text-[10px] pr-1"
+                                                                        >
+                                                                            {isSavingEdit ? '...' : 'Save'}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                                <button 
+                                                                    type="button" 
+                                                                    onClick={() => {
+                                                                        setEditingCommentId(null);
+                                                                        setEditingText('');
+                                                                    }}
+                                                                    className="text-[10px] text-gray-400 hover:text-gray-600 font-bold px-1"
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            </form>
+                                                        ) : (
+                                                            <>
+                                                                <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap mb-1">{c.comment_text}</p>
+                                                                {/* Reply Action Button */}
+                                                                <div className="flex items-center gap-3.5 mt-1 pt-0.5">
+                                                                    <button 
+                                                                        onClick={() => {
+                                                                            setReplyingToId(replyingToId === c.id ? null : c.id);
+                                                                            setReplyText('');
+                                                                            setEditingCommentId(null);
+                                                                        }}
+                                                                        className="text-[10px] font-bold text-gray-500 hover:text-[var(--color-primary)] transition-colors flex items-center gap-1"
+                                                                    >
+                                                                        Reply
+                                                                    </button>
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Action buttons on comment hover */}
+                                                    <div className="flex items-center gap-0.5 opacity-0 group-hover/comment:opacity-100 transition-opacity self-center">
+                                                        {c.user_id === currentUserId && (
+                                                            <button 
+                                                                onClick={() => {
+                                                                    setEditingCommentId(c.id);
+                                                                    setEditingText(c.comment_text);
+                                                                    setReplyingToId(null);
+                                                                }}
+                                                                className="text-gray-300 hover:text-blue-500 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
+                                                                title="Edit comment"
+                                                            >
+                                                                <FaEdit className="text-[10px]" />
+                                                            </button>
+                                                        )}
+                                                        {(c.user_id === currentUserId || author_profile?.role === 'super_admin') && (
+                                                            <button 
+                                                                onClick={() => handleDeleteCommentClick(c.id)}
+                                                                className="text-gray-300 hover:text-red-500 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
+                                                                title="Delete comment"
+                                                            >
+                                                                <FaTrash className="text-[10px]" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Reply Submission Form */}
+                                                {replyingToId === c.id && (
+                                                    <form onSubmit={(e) => handleAddReply(e, c.id)} className="flex gap-2.5 ml-10 mt-1">
+                                                        <UserAvatar 
+                                                            src={profile?.profile_pic_url} 
+                                                            name={name}
+                                                            className="w-8 h-8 rounded-full border border-gray-100"
+                                                        />
+                                                        <div className="flex-grow relative flex items-center">
+                                                            <input
+                                                                type="text"
+                                                                value={replyText}
+                                                                onChange={(e) => setReplyText(e.target.value)}
+                                                                placeholder={`Reply to ${c.author_profile?.fullName || "Member"}...`}
+                                                                className="w-full text-xs text-gray-700 border border-gray-200 bg-gray-50 hover:bg-white focus:bg-white rounded-full pl-3 pr-16 py-1.5 outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
+                                                                required
+                                                                maxLength={500}
+                                                                autoFocus
+                                                            />
+                                                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                                                <EmojiPicker onEmojiSelect={(emoji) => setReplyText(prev => prev + emoji)} align="right" buttonClassName="hover:bg-gray-100 p-0.5 rounded-full" />
+                                                                <button
+                                                                    type="submit"
+                                                                    disabled={isSavingReply || !replyText.trim()}
+                                                                    className="text-[var(--color-primary)] hover:text-blue-700 disabled:opacity-40 font-bold text-[10px] pr-1"
+                                                                >
+                                                                    {isSavingReply ? '...' : 'Reply'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => setReplyingToId(null)}
+                                                            className="text-[10px] text-gray-400 hover:text-gray-600 font-bold self-center px-1"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                    </form>
+                                                )}
+
+                                                {/* Nested Replies List */}
+                                                {replies.length > 0 && (
+                                                    <div className="pl-6 border-l border-gray-150 ml-6 mt-1 flex flex-col gap-2.5">
+                                                        {replies.map(reply => (
+                                                            <div key={reply.id} className="flex gap-2.5 items-start group/reply">
+                                                                <UserAvatar 
+                                                                    src={reply.author_profile?.profile_pic_url} 
+                                                                    name={reply.author_profile?.fullName || "Member"}
+                                                                    className="w-8 h-8 rounded-full border border-gray-100 mt-0.5"
+                                                                />
+                                                                <div className="flex-grow bg-gray-50 rounded-2xl p-3 max-w-[85%]">
+                                                                    <div className="flex items-center justify-between mb-1">
+                                                                        <div>
+                                                                            <h5 className="font-bold text-xs text-gray-800 leading-none">
+                                                                                {reply.author_profile?.fullName || "Member"}
+                                                                            </h5>
+                                                                            <p className="text-[9px] text-gray-400 mt-1">
+                                                                                {reply.author_profile?.headline || "Educator"}
+                                                                            </p>
+                                                                        </div>
+                                                                        <span className="text-[9px] text-gray-400 font-medium">
+                                                                            {formatDistanceToNow(new Date(reply.created_at), { addSuffix: false })}
+                                                                        </span>
+                                                                    </div>
+                                                                    
+                                                                    {editingCommentId === reply.id ? (
+                                                                        <form onSubmit={(e) => handleEditComment(e, reply.id)} className="flex items-center gap-2 mt-1">
+                                                                            <div className="relative flex-grow flex items-center">
+                                                                                <input
+                                                                                    ref={editInputRef}
+                                                                                    type="text"
+                                                                                    value={editingText}
+                                                                                    onChange={(e) => setEditingText(e.target.value)}
+                                                                                    className="w-full text-xs text-gray-700 border border-gray-200 bg-white rounded-full pl-3 pr-16 py-1.5 outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
+                                                                                    required
+                                                                                    maxLength={500}
+                                                                                    autoFocus
+                                                                                />
+                                                                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                                                                    <EmojiPicker onEmojiSelect={handleEditEmojiSelect} align="right" buttonClassName="hover:bg-gray-100 p-0.5 rounded-full" />
+                                                                                    <button
+                                                                                        type="submit"
+                                                                                        disabled={isSavingEdit || !editingText.trim()}
+                                                                                        className="text-[var(--color-primary)] hover:text-blue-700 disabled:opacity-40 font-bold text-[10px] pr-1"
+                                                                                    >
+                                                                                        {isSavingEdit ? '...' : 'Save'}
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+                                                                            <button 
+                                                                                type="button" 
+                                                                                onClick={() => {
+                                                                                    setEditingCommentId(null);
+                                                                                    setEditingText('');
+                                                                                }}
+                                                                                className="text-[10px] text-gray-400 hover:text-gray-600 font-bold px-1"
+                                                                            >
+                                                                                Cancel
+                                                                            </button>
+                                                                        </form>
+                                                                    ) : (
+                                                                        <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{reply.comment_text}</p>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Action buttons on reply hover */}
+                                                                <div className="flex items-center gap-0.5 opacity-0 group-hover/reply:opacity-100 transition-opacity self-center">
+                                                                    {reply.user_id === currentUserId && (
+                                                                        <button 
+                                                                            onClick={() => {
+                                                                                setEditingCommentId(reply.id);
+                                                                                setEditingText(reply.comment_text);
+                                                                                setReplyingToId(null);
+                                                                            }}
+                                                                            className="text-gray-300 hover:text-blue-500 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
+                                                                            title="Edit reply"
+                                                                        >
+                                                                            <FaEdit className="text-[9px]" />
+                                                                        </button>
+                                                                    )}
+                                                                    {(reply.user_id === currentUserId || author_profile?.role === 'super_admin') && (
+                                                                        <button 
+                                                                            onClick={() => handleDeleteCommentClick(reply.id)}
+                                                                            className="text-gray-300 hover:text-red-500 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
+                                                                            title="Delete reply"
+                                                                        >
+                                                                            <FaTrash className="text-[9px]" />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    });
+                                })()
                             ) : (
                                 <p className="text-center py-4 text-xs font-semibold text-gray-400">Be the first to share your thoughts!</p>
                             )}
@@ -1575,6 +1921,7 @@ export default function UserFeedPost({
                             {/* Modal Body */}
                             <div className="p-5 flex flex-col gap-4">
                                 <textarea
+                                    ref={editPostTextareaRef}
                                     value={editedContent}
                                     onChange={(e) => setEditedContent(e.target.value)}
                                     placeholder="What's on your mind?"
@@ -1584,25 +1931,67 @@ export default function UserFeedPost({
                             </div>
 
                             {/* Modal Footer */}
-                            <div className="flex items-center justify-end gap-3 p-4 bg-slate-50 border-t border-gray-100">
-                                <button
-                                    onClick={() => setIsEditingPost(false)}
-                                    className="text-xs font-bold text-gray-500 hover:text-gray-700 px-4 py-2 hover:bg-gray-100 rounded-lg transition"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleUpdatePostContent}
-                                    disabled={isSavingPost}
-                                    className="bg-[var(--color-primary)] hover:bg-[var(--color-secondary)] text-white text-xs font-bold px-5 py-2.5 rounded-lg transition duration-200 shadow-md disabled:opacity-50 flex items-center gap-1.5"
-                                >
-                                    {isSavingPost ? "Saving..." : "Save Changes"}
-                                </button>
+                            <div className="flex items-center justify-between p-4 bg-slate-50 border-t border-gray-100">
+                                <div>
+                                    <EmojiPicker onEmojiSelect={handleEditPostEmojiSelect} align="left" />
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => setIsEditingPost(false)}
+                                        className="text-xs font-bold text-gray-500 hover:text-gray-700 px-4 py-2 hover:bg-gray-100 rounded-lg transition"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleUpdatePostContent}
+                                        disabled={isSavingPost}
+                                        className="bg-[var(--color-primary)] hover:bg-[var(--color-secondary)] text-white text-xs font-bold px-5 py-2.5 rounded-lg transition duration-200 shadow-md disabled:opacity-50 flex items-center gap-1.5"
+                                    >
+                                        {isSavingPost ? "Saving..." : "Save Changes"}
+                                    </button>
+                                </div>
                             </div>
                         </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Custom confirmation dialog for deleting a comment */}
+            <ConfirmDialog
+                isOpen={commentToDelete !== null}
+                onClose={() => setCommentToDelete(null)}
+                onConfirm={async () => {
+                    if (!commentToDelete) return;
+                    setIsDeletingComment(true);
+                    try {
+                        await executeDeleteComment(commentToDelete);
+                    } finally {
+                        setIsDeletingComment(false);
+                        setCommentToDelete(null);
+                    }
+                }}
+                title="Delete Comment"
+                message="Are you sure you want to permanently delete this comment? This action cannot be undone."
+                confirmText="Delete"
+                cancelText="Cancel"
+                type="danger"
+                isLoading={isDeletingComment}
+            />
+
+            {/* Custom confirmation dialog for deleting a post */}
+            <ConfirmDialog
+                isOpen={showDeletePostConfirm}
+                onClose={() => setShowDeletePostConfirm(false)}
+                onConfirm={async () => {
+                    setShowDeletePostConfirm(false);
+                    await executeDeletePost();
+                }}
+                title="Delete Post"
+                message="Are you sure you want to delete this post? This cannot be undone."
+                confirmText="Delete"
+                cancelText="Cancel"
+                type="danger"
+            />
         </motion.div>
     );
 }

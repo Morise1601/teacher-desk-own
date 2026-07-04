@@ -14,7 +14,7 @@ import {
     FaEye, FaGlobe, FaBuilding, FaGraduationCap, FaPaperPlane,
     FaArrowRight, FaSchool, FaChartLine, FaChevronUp, FaChevronDown,
     FaChartBar, FaLightbulb, FaCalendarCheck, FaStar, FaVideo, FaFireAlt,
-    FaFilePdf, FaFileWord, FaDownload
+    FaFilePdf, FaFileWord, FaDownload, FaChevronLeft, FaChevronRight
 } from 'react-icons/fa';
 import { MdWork, MdVerified, MdLocationOn, MdTrendingUp } from 'react-icons/md';
 import { HiLightningBolt } from 'react-icons/hi';
@@ -28,6 +28,8 @@ import { Job, Application, Resume, TeacherSettings, InstitutionSettings } from '
 import { jobsRepository } from './jobsRepository';
 import { supabase } from '@/lib/supabase';
 import { getUserRoleAction } from '@/app/actions/auth';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { createPortal } from 'react-dom';
 import { decryptData } from '@/lib/crypto';
 
 // Components
@@ -63,6 +65,17 @@ export default function JobsPage() {
     const [editingJob, setEditingJob] = useState<Job | null>(null);
     const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
     const [applyingJob, setApplyingJob] = useState<Job | null>(null);
+    const [jobToDelete, setJobToDelete] = useState<string | null>(null);
+    const [isDeletingJob, setIsDeletingJob] = useState(false);
+    
+    // Slideable Job Details Modal states
+    const [selectedJobIndex, setSelectedJobIndex] = useState<number | null>(null);
+    const [slideDirection, setSlideDirection] = useState<number>(0);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     // Application Cover Letter Input
     const [coverLetterInput, setCoverLetterInput] = useState('');
@@ -329,18 +342,54 @@ export default function JobsPage() {
         }
     };
 
-    const handleDeleteJob = async (id: string) => {
-        if (confirm('Are you sure you want to delete this job posting?')) {
-            try {
-                await jobsRepository.deleteJob(id);
-                toast.success('Job listing deleted.');
-                window.dispatchEvent(new CustomEvent('jobs:updated'));
-                await loadData();
-            } catch (err) {
-                toast.error('Failed to delete listing.');
-            }
+    const handleDeleteJob = (id: string) => {
+        setJobToDelete(id);
+    };
+
+    const executeDeleteJob = async () => {
+        if (!jobToDelete) return;
+        setIsDeletingJob(true);
+        try {
+            await jobsRepository.deleteJob(jobToDelete);
+            toast.success('Job listing deleted.');
+            window.dispatchEvent(new CustomEvent('jobs:updated'));
+            await loadData();
+        } catch (err) {
+            toast.error('Failed to delete listing.');
+        } finally {
+            setIsDeletingJob(false);
+            setJobToDelete(null);
         }
     };
+
+    const handlePrevJob = () => {
+        if (selectedJobIndex !== null && selectedJobIndex > 0) {
+            setSlideDirection(-1);
+            setSelectedJobIndex(selectedJobIndex - 1);
+        }
+    };
+
+    const handleNextJob = () => {
+        if (selectedJobIndex !== null && selectedJobIndex < filteredJobs.length - 1) {
+            setSlideDirection(1);
+            setSelectedJobIndex(selectedJobIndex + 1);
+        }
+    };
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (selectedJobIndex === null) return;
+            if (e.key === 'ArrowLeft') {
+                handlePrevJob();
+            } else if (e.key === 'ArrowRight') {
+                handleNextJob();
+            } else if (e.key === 'Escape') {
+                setSelectedJobIndex(null);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedJobIndex, filteredJobs.length]);
 
     const handlePauseJob = async (job: Job) => {
         try {
@@ -444,8 +493,8 @@ export default function JobsPage() {
         );
     };
 
-    const JobCard = ({ job, index, saved, hasApplied, matchRating, onToggleSave, onApplyClick }: {
-        job: Job; index: number; saved: boolean; hasApplied: boolean; matchRating: number | null; onToggleSave: (id: string) => void; onApplyClick: (job: Job) => void;
+    const JobCard = ({ job, index, saved, hasApplied, matchRating, onToggleSave, onApplyClick, onCardClick }: {
+        job: Job; index: number; saved: boolean; hasApplied: boolean; matchRating: number | null; onToggleSave: (id: string) => void; onApplyClick: (job: Job) => void; onCardClick: (index: number) => void;
     }) => {
         const schoolInitial = job.schoolInitial || job.school.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
         const getSchoolColor = (name: string) => {
@@ -464,6 +513,7 @@ export default function JobsPage() {
                 variants={fadeUp} initial="hidden" animate="visible" custom={index}
                 whileHover={{ y: -2, boxShadow: '0 8px 28px rgba(20,60,100,0.06)' }}
                 transition={{ type: 'spring', stiffness: 280 }}
+                onClick={() => onCardClick(index)}
                 className={`bg-white rounded-xl border p-4 flex flex-col justify-between gap-3.5 cursor-pointer relative overflow-hidden shadow-2xs hover:shadow-md transition duration-300 ${job.isFeatured ? 'border-[var(--color-primary)]/20' : 'border-gray-200'}`}
             >
                 {job.isFeatured && (
@@ -1137,6 +1187,10 @@ export default function JobsPage() {
                                             matchRating={matchRating}
                                             onToggleSave={handleToggleSave}
                                             onApplyClick={handleApplyClick}
+                                            onCardClick={(index) => {
+                                                setSlideDirection(0);
+                                                setSelectedJobIndex(index);
+                                            }}
                                         />
                                     );
                                 })}
@@ -1545,6 +1599,317 @@ export default function JobsPage() {
                     </div>
                 )}
             </AnimatePresence>
+
+            {/* Slideable Job Details Slider Modal */}
+            {mounted && selectedJobIndex !== null && filteredJobs[selectedJobIndex] && (
+                (() => {
+                    const activeJob = filteredJobs[selectedJobIndex];
+                    const isSaved = savedJobIds.includes(activeJob.id);
+                    const hasApplied = applications.some(a => a.jobId === activeJob.id && a.teacherId === DUMMY_TEACHER_ID);
+                    const matchRating = teacherSettings ? calculateMatchScore(activeJob, teacherSettings).score : null;
+                    
+                    const schoolInitial = activeJob.schoolInitial || activeJob.school.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
+                    const getSchoolColor = (name: string) => {
+                        const colors = ['#1e40af', '#0d9488', '#b45309', '#7c3aed', '#dc2626', '#0891b2', '#059669', '#e11d48'];
+                        let hash = 0;
+                        for (let i = 0; i < name.length; i++) {
+                            hash = name.charCodeAt(i) + ((hash << 5) - hash);
+                        }
+                        const index = Math.abs(hash) % colors.length;
+                        return colors[index];
+                    };
+                    const schoolColor = activeJob.schoolColor || getSchoolColor(activeJob.school);
+
+                    return createPortal(
+                        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 overflow-hidden">
+                            {/* Backdrop overlay */}
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                onClick={() => setSelectedJobIndex(null)}
+                                className="absolute inset-0 bg-black/60 backdrop-blur-xs"
+                            />
+
+                            {/* Navigation Arrow buttons */}
+                            {selectedJobIndex > 0 && (
+                                <button
+                                    onClick={handlePrevJob}
+                                    className="absolute left-4 top-1/2 -translate-y-1/2 z-50 bg-white hover:bg-slate-50 text-gray-700 hover:text-[var(--color-primary)] w-11 h-11 rounded-full flex items-center justify-center shadow-lg border border-gray-150 transition transform hover:scale-105 active:scale-95"
+                                    title="Previous Job (Left Arrow)"
+                                >
+                                    <FaChevronLeft className="text-sm" />
+                                </button>
+                            )}
+
+                            {selectedJobIndex < filteredJobs.length - 1 && (
+                                <button
+                                    onClick={handleNextJob}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 z-50 bg-white hover:bg-slate-50 text-gray-700 hover:text-[var(--color-primary)] w-11 h-11 rounded-full flex items-center justify-center shadow-lg border border-gray-150 transition transform hover:scale-105 active:scale-95"
+                                    title="Next Job (Right Arrow)"
+                                >
+                                    <FaChevronRight className="text-sm" />
+                                </button>
+                            )}
+
+                            {/* Modal Card */}
+                            <motion.div
+                                initial={{ scale: 0.95, opacity: 0, y: 30 }}
+                                animate={{ scale: 1, opacity: 1, y: 0 }}
+                                exit={{ scale: 0.95, opacity: 0, y: 30 }}
+                                transition={{ type: "spring", damping: 25, stiffness: 220 }}
+                                className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden z-10"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                {/* Modal Header */}
+                                <div className="flex items-center justify-between border-b border-gray-100 p-5 bg-slate-50/50">
+                                    <div className="flex items-center gap-3">
+                                        <span className="w-8 h-8 rounded-lg bg-blue-50 text-[var(--color-primary)] flex items-center justify-center text-sm font-bold">💼</span>
+                                        <div>
+                                            <h3 className="font-bold text-gray-800 text-sm">Job Details</h3>
+                                            <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Swipe or use arrows to view next jobs</p>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={() => setSelectedJobIndex(null)}
+                                        className="text-gray-400 hover:text-red-500 hover:bg-slate-100 p-1.5 rounded-full transition-colors"
+                                    >
+                                        <FaTimes className="text-sm" />
+                                    </button>
+                                </div>
+
+                                {/* Slider Content Wrapper */}
+                                <div className="flex-1 overflow-y-auto min-h-0 bg-white">
+                                    <AnimatePresence mode="wait" custom={slideDirection}>
+                                        <motion.div
+                                            key={activeJob.id}
+                                            custom={slideDirection}
+                                            variants={{
+                                                enter: (dir: number) => ({
+                                                    x: dir > 0 ? 100 : dir < 0 ? -100 : 0,
+                                                    opacity: 0
+                                                }),
+                                                center: {
+                                                    x: 0,
+                                                    opacity: 1
+                                                },
+                                                exit: (dir: number) => ({
+                                                    x: dir < 0 ? 100 : dir > 0 ? -100 : 0,
+                                                    opacity: 0
+                                                })
+                                            }}
+                                            initial="enter"
+                                            animate="center"
+                                            exit="exit"
+                                            transition={{
+                                                x: { type: "spring", stiffness: 350, damping: 30 },
+                                                opacity: { duration: 0.15 }
+                                            }}
+                                            drag="x"
+                                            dragConstraints={{ left: 0, right: 0 }}
+                                            dragElastic={0.6}
+                                            onDragEnd={(e, info) => {
+                                                const swipe = info.offset.x;
+                                                const threshold = 100;
+                                                if (swipe < -threshold) {
+                                                    handleNextJob();
+                                                } else if (swipe > threshold) {
+                                                    handlePrevJob();
+                                                }
+                                            }}
+                                            className="grid grid-cols-1 md:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-gray-100 min-h-full cursor-grab active:cursor-grabbing select-none"
+                                        >
+                                            {/* Left Column: School profile + Key stats */}
+                                            <div className="md:col-span-2 p-6 flex flex-col gap-5">
+                                                <div className="flex flex-col items-center text-center gap-3">
+                                                    <div 
+                                                        className="w-18 h-18 rounded-2xl flex items-center justify-center text-white font-extrabold text-2xl shadow-md border-4 border-white"
+                                                        style={{ backgroundColor: schoolColor }}
+                                                    >
+                                                        {schoolInitial}
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <h4 className="font-bold text-gray-800 text-sm">{activeJob.title}</h4>
+                                                        <p className="text-xs text-gray-500 font-semibold flex items-center justify-center gap-1.5">
+                                                            {activeJob.school}
+                                                            {activeJob.isVerified && <MdVerified className="text-[var(--color-primary)] text-xs flex-shrink-0" />}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Meta Badges */}
+                                                <div className="flex flex-wrap items-center justify-center gap-1.5">
+                                                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-[var(--color-primary)] border border-blue-100/60">
+                                                        {activeJob.jobType}
+                                                    </span>
+                                                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-green-50 text-[var(--color-secondary)] border border-green-100/60">
+                                                        {activeJob.board}
+                                                    </span>
+                                                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-100/60">
+                                                        {activeJob.gradeLevel}
+                                                    </span>
+                                                    {matchRating !== null && (
+                                                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100/60">
+                                                            {matchRating}% Match Score
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {/* Stats list */}
+                                                <div className="bg-slate-50/50 rounded-2xl border border-gray-100 p-4 space-y-3">
+                                                    <div className="flex items-center justify-between text-xs border-b border-gray-100 pb-2">
+                                                        <span className="text-gray-400 font-semibold">Location</span>
+                                                        <span className="font-bold text-gray-700 truncate max-w-[150px]">{activeJob.location}</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between text-xs border-b border-gray-100 pb-2">
+                                                        <span className="text-gray-400 font-semibold">Salary Range</span>
+                                                        <span className="font-bold text-gray-700">{activeJob.salary}</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between text-xs border-b border-gray-100 pb-2">
+                                                        <span className="text-gray-400 font-semibold">Experience</span>
+                                                        <span className="font-bold text-gray-700">{activeJob.experience}</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between text-xs border-b border-gray-100 pb-2">
+                                                        <span className="text-gray-400 font-semibold">Qualification</span>
+                                                        <span className="font-bold text-gray-700 truncate max-w-[150px]">{activeJob.qualification}</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between text-xs border-b border-gray-100 pb-2">
+                                                        <span className="text-gray-400 font-semibold">Open Positions</span>
+                                                        <span className="font-bold text-[var(--color-primary)]">{activeJob.openPositions || 1} vacant</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between text-xs">
+                                                        <span className="text-gray-400 font-semibold">Apply Deadline</span>
+                                                        <span className="font-bold text-red-500">{activeJob.deadline || 'Apply Immediately'}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Right Column: Detailed Description + Requirements */}
+                                            <div className="md:col-span-3 p-6 flex flex-col gap-5 overflow-y-auto">
+                                                {/* Description */}
+                                                <div className="space-y-2">
+                                                    <h5 className="text-[12px] font-black text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                                                        <span>📝</span> About the Role
+                                                    </h5>
+                                                    <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">
+                                                        {activeJob.description || "As a teacher at our school, you will be responsible for creating classroom instructions that foster student learning and support community-centered values. Dynamic pedagogical designs, student evaluation structures, and regular communication with parents are expected."}
+                                                    </p>
+                                                </div>
+
+                                                {/* Requirements */}
+                                                <div className="space-y-2">
+                                                    <h5 className="text-[12px] font-black text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                                                        <span>🎓</span> Eligibility & Requirements
+                                                    </h5>
+                                                    <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">
+                                                        {activeJob.requirements || `Must possess a valid degree in the relevant subject area. A professional teaching degree (B.Ed/M.Ed) is highly preferred. Effective communication skills, command over class environments, and familiarity with CBSE/ICSE curriculum structures are required.`}
+                                                    </p>
+                                                </div>
+
+                                                {/* Skills Required */}
+                                                {activeJob.skillsRequired && activeJob.skillsRequired.length > 0 && (
+                                                    <div className="space-y-2">
+                                                        <h5 className="text-[12px] font-black text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                                                            <span>⚙️</span> Skills Required
+                                                        </h5>
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {activeJob.skillsRequired.map((skill, index) => (
+                                                                <span 
+                                                                    key={index}
+                                                                    className="text-[10px] font-bold px-3 py-1 rounded bg-blue-50 text-[var(--color-primary)] border border-blue-100/50"
+                                                                >
+                                                                    {skill}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </motion.div>
+                                    </AnimatePresence>
+                                </div>
+
+                                {/* Modal Footer */}
+                                <div className="border-t border-gray-100 p-5 bg-slate-50/50 flex items-center justify-between">
+                                    {/* Pagination Indicators */}
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex gap-1.5">
+                                            {filteredJobs.slice(0, 10).map((_, i) => (
+                                                <button
+                                                    key={i}
+                                                    onClick={() => {
+                                                        setSlideDirection(i > selectedJobIndex ? 1 : -1);
+                                                        setSelectedJobIndex(i);
+                                                    }}
+                                                    className={`w-2 h-2 rounded-full transition-all duration-200 ${
+                                                        i === selectedJobIndex 
+                                                            ? 'bg-[var(--color-primary)] w-4' 
+                                                            : 'bg-gray-200 hover:bg-gray-300'
+                                                    }`}
+                                                    title={`Go to Job ${i + 1}`}
+                                                />
+                                            ))}
+                                            {filteredJobs.length > 10 && (
+                                                <span className="text-[10px] text-gray-400 font-bold self-center">...</span>
+                                            )}
+                                        </div>
+                                        <span className="text-[11px] font-bold text-gray-500">
+                                            Job {selectedJobIndex + 1} of {filteredJobs.length}
+                                        </span>
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={() => handleToggleSave(activeJob.id)}
+                                            className={`text-xs font-bold px-4 py-2 border rounded-xl transition flex items-center gap-1.5 shadow-2xs ${
+                                                isSaved
+                                                    ? 'border-[var(--color-secondary)]/30 bg-green-50 text-[var(--color-secondary)]'
+                                                    : 'border-gray-200 bg-white text-gray-600 hover:bg-slate-50 hover:text-[var(--color-primary)]'
+                                            }`}
+                                        >
+                                            {isSaved ? <FaBookmark className="text-xs" /> : <FaRegBookmark className="text-xs" />}
+                                            <span>{isSaved ? 'Saved' : 'Save'}</span>
+                                        </button>
+
+                                        {hasApplied ? (
+                                            <button
+                                                disabled
+                                                className="bg-slate-100 text-slate-400 text-xs font-bold px-5 py-2.5 rounded-xl border border-slate-200 flex items-center gap-1.5"
+                                            >
+                                                <FaCheckCircle className="text-emerald-500 text-sm" /> Applied
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => {
+                                                    // Closes slider details and opens Quick Apply
+                                                    handleApplyClick(activeJob);
+                                                }}
+                                                className="bg-[var(--color-primary)] hover:bg-[var(--color-secondary)] text-white text-xs font-bold px-6 py-2.5 rounded-xl transition-all shadow-md flex items-center gap-1.5"
+                                            >
+                                                <HiLightningBolt className="text-xs" /> Apply Now
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>,
+                        document.body
+                    );
+                })()
+            )}
+
+            <ConfirmDialog
+                isOpen={jobToDelete !== null}
+                onClose={() => setJobToDelete(null)}
+                onConfirm={executeDeleteJob}
+                title="Delete Job Posting"
+                message="Are you sure you want to permanently delete this job listing? This action cannot be undone."
+                confirmText="Delete"
+                cancelText="Cancel"
+                type="danger"
+                isLoading={isDeletingJob}
+            />
 
         </div>
     );

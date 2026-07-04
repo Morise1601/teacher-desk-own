@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { HiX } from 'react-icons/hi';
 import { AlertCircle } from 'lucide-react';
+import { createPortal } from 'react-dom';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -28,6 +29,12 @@ export const ConfirmDialog = ({
   type = 'info',
   isLoading = false,
 }: ConfirmDialogProps) => {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const typeStyles = {
     danger: {
       bg: 'bg-red-50', // Still keeping subtle red for danger as it's standard, but can be switched if user insists. 
@@ -52,10 +59,12 @@ export const ConfirmDialog = ({
 
   const style = typeStyles[type];
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6">
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -67,7 +76,7 @@ export const ConfirmDialog = ({
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="relative w-full max-w-[calc(100vw-2rem)] sm:max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            className="relative w-full max-w-[calc(100vw-2rem)] sm:max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col z-[100000]"
           >
             <div className={`p-4 border-b ${style.border} flex items-center justify-between bg-[var(--color-primary)]/5`}>
               <div className="flex items-center gap-2 text-[var(--color-primary)]">
@@ -108,6 +117,7 @@ export const ConfirmDialog = ({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };
