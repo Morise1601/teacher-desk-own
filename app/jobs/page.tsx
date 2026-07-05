@@ -41,6 +41,205 @@ import AnalyticsPanel from './components/AnalyticsPanel';
 // Filter mapping
 const salaryRangeMap: Record<string, number> = { 'Any Salary': 0, '₹10k–₹20k': 10000, '₹20k–₹40k': 20000, '₹40k–₹80k': 40000 };
 
+// ─── Animation Variants ───
+const fadeUp: Variants = {
+    hidden: { opacity: 0, y: 18 },
+    visible: (i = 0) => ({
+        opacity: 1, y: 0,
+        transition: { delay: i * 0.06, duration: 0.42, ease: 'easeOut' },
+    }),
+};
+
+// ─── Reusable Sub-components ───
+const FilterSection = ({ title, children, defaultOpen = true }: {
+    title: string; children: React.ReactNode; defaultOpen?: boolean;
+}) => {
+    const [open, setOpen] = useState(defaultOpen);
+    return (
+        <div className="border-b border-gray-100 pb-3 mb-3 last:border-0 last:pb-0 last:mb-0">
+            <button
+                onClick={() => setOpen(o => !o)}
+                className="w-full flex items-center justify-between text-[13px] font-semibold text-[var(--color-primary)] mb-2"
+            >
+                {title}
+                {open ? <FaChevronUp className="text-[10px] opacity-50" /> : <FaChevronDown className="text-[10px] opacity-50" />}
+            </button>
+            <AnimatePresence initial={false}>
+                {open && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }}
+                        className="overflow-hidden"
+                    >
+                        {children}
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+};
+
+const FilterChip = ({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) => {
+    return (
+        <button
+            onClick={onClick}
+            className={`text-2xs px-2.5 py-1 rounded-full border font-bold transition-all duration-200 mb-1 mr-1 ${selected
+                ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)] shadow-sm'
+                : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]'
+                }`}
+        >
+            {label}
+        </button>
+    );
+};
+
+const RightPanelCard = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => {
+    return (
+        <div className={`bg-white rounded-xl border border-gray-200 p-4 shadow-2xs hover:shadow-sm transition duration-300 ${className}`}>
+            {children}
+        </div>
+    );
+};
+
+const RightPanelTitle = ({ icon, title }: { icon: React.ReactNode; title: string }) => {
+    return (
+        <div className="flex items-center gap-2 mb-3">
+            <span className="text-[var(--color-primary)] text-sm">{icon}</span>
+            <h3 className="text-[12px] font-bold text-[var(--color-primary)] uppercase tracking-wider">{title}</h3>
+        </div>
+    );
+};
+
+const JobCard = ({ job, index, saved, hasApplied, matchRating, onToggleSave, onApplyClick, onCardClick }: {
+    job: Job; index: number; saved: boolean; hasApplied: boolean; matchRating: number | null; onToggleSave: (id: string) => void; onApplyClick: (job: Job) => void; onCardClick: (index: number) => void;
+}) => {
+    const schoolInitial = job.schoolInitial || job.school.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
+    const getSchoolColor = (name: string) => {
+        const colors = ['#1e40af', '#0d9488', '#b45309', '#7c3aed', '#dc2626', '#0891b2', '#059669', '#e11d48'];
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) {
+            hash = name.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const index = Math.abs(hash) % colors.length;
+        return colors[index];
+    };
+    const schoolColor = job.schoolColor || getSchoolColor(job.school);
+
+    return (
+        <motion.div
+            variants={fadeUp} initial="hidden" animate="visible" custom={index}
+            whileHover={{ y: -2, boxShadow: '0 8px 28px rgba(20,60,100,0.06)' }}
+            transition={{ type: 'spring', stiffness: 280 }}
+            onClick={() => onCardClick(index)}
+            className={`bg-white rounded-xl border p-4 flex flex-col justify-between gap-3.5 cursor-pointer relative overflow-hidden shadow-2xs hover:shadow-md transition duration-300 ${job.isFeatured ? 'border-[var(--color-primary)]/20' : 'border-gray-200'}`}
+        >
+            {job.isFeatured && (
+                <div className="absolute top-0 right-0 z-10">
+                    <div className="bg-gradient-to-l from-[var(--color-primary)] to-[#1e5a9a] text-white text-[9px] font-bold px-2.5 py-0.5 rounded-bl-xl tracking-widest uppercase">
+                        ⭐ Featured
+                    </div>
+                </div>
+            )}
+
+            <div>
+                {/* Header: Logo + Title + Bookmark */}
+                <div className="flex items-start gap-3 justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                        <div
+                            className="w-11 h-11 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0 shadow-2xs"
+                            style={{ backgroundColor: schoolColor }}
+                        >
+                            {schoolInitial}
+                        </div>
+                        <div className="min-w-0">
+                            <h3 className="text-[13px] font-bold text-gray-800 leading-snug line-clamp-1">
+                                {job.title}
+                            </h3>
+                            <div className="flex items-center gap-1 mt-0.5">
+                                <span className="text-[11px] text-gray-500 font-semibold truncate max-w-[130px]">{job.school}</span>
+                                {job.isVerified && <MdVerified className="text-[var(--color-primary)] text-xs flex-shrink-0" />}
+                            </div>
+                        </div>
+                    </div>
+                    <button
+                        onClick={e => { e.stopPropagation(); onToggleSave(job.id); }}
+                        className="flex-shrink-0 text-gray-300 hover:text-[var(--color-secondary)] transition p-1"
+                    >
+                        {saved
+                            ? <FaBookmark className="text-[var(--color-secondary)] text-sm" />
+                            : <FaRegBookmark className="text-gray-300 hover:text-[var(--color-secondary)] text-sm transition-colors" />
+                        }
+                    </button>
+                </div>
+
+                {/* Tags */}
+                <div className="flex flex-wrap gap-1 mb-3">
+                    {job.tags.slice(0, 3).map((tag, i) => (
+                        <span key={i} className="text-[9px] font-bold px-2.5 py-0.5 rounded-full bg-slate-50 border border-slate-100 text-slate-500">
+                            {tag}
+                        </span>
+                    ))}
+                    <span className="text-[9px] font-bold px-2.5 py-0.5 rounded-full bg-green-50 text-[var(--color-secondary)] border border-green-100">
+                        {job.jobType}
+                    </span>
+                    {matchRating !== null && (
+                        <span className="text-[9px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                            {matchRating}% Match
+                        </span>
+                    )}
+                </div>
+
+                {/* Meta details */}
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 border-t border-slate-50 pt-2.5 text-[11px] text-gray-500">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                        <MdLocationOn className="text-gray-400 text-xs flex-shrink-0" />
+                        <span className="truncate">{job.location}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                        <FaRupeeSign className="text-amber-500 text-xs flex-shrink-0" />
+                        <span className="truncate">{job.salary}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                        <FaBriefcase className="text-gray-400 text-xs flex-shrink-0" />
+                        <span className="truncate">{job.experience}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                        <FaGraduationCap className="text-purple-500 text-xs flex-shrink-0" />
+                        <span className="truncate">{job.qualification}</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Footer Apply Button */}
+            <div className="flex items-center justify-between pt-2 border-t border-gray-100 mt-auto">
+                <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1 text-[10px] text-gray-400 font-semibold">
+                        <FaClock className="text-[10px]" />{job.postedDate || 'Active'}
+                    </span>
+                    <span className="flex items-center gap-1 text-[10px] text-gray-400 font-semibold">
+                        <FaUserTie className="text-[10px]" />{job.applicants} applied
+                    </span>
+                </div>
+                {hasApplied ? (
+                    <button
+                        disabled
+                        className="bg-slate-100 text-slate-400 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-slate-200 flex items-center gap-1"
+                    >
+                        <FaCheckCircle className="text-emerald-500" /> Applied
+                    </button>
+                ) : (
+                    <button 
+                        onClick={e => { e.stopPropagation(); onApplyClick(job); }}
+                        className="bg-[var(--color-primary)] hover:bg-[var(--color-secondary)] text-white text-[10px] font-bold px-3.5 py-1.5 rounded-lg transition-colors flex items-center gap-1 shadow-2xs"
+                    >
+                        <HiLightningBolt className="text-[11px]" /> Apply
+                    </button>
+                )}
+            </div>
+        </motion.div>
+    );
+};
+
 export default function JobsPage() {
     // Current User Session Context
     const DUMMY_TEACHER_ID = 'teacher-session-123';
@@ -98,11 +297,11 @@ export default function JobsPage() {
     const [applicantExpFilter, setApplicantExpFilter] = useState('Any Experience');
     const [applicantSubjectFilter, setApplicantSubjectFilter] = useState('All Subjects');
 
-    const loadData = async () => {
+    const loadData = async (cachedJobs?: Job[]) => {
         try {
-            const allJobs = await jobsRepository.getJobs();
-            setJobs(allJobs);
-            const allApps = await jobsRepository.getApplications();
+            const allJobs = cachedJobs || await jobsRepository.getJobs();
+            if (!cachedJobs) setJobs(allJobs);
+            const allApps = await jobsRepository.getApplications(allJobs);
             setApplications(allApps);
             const savedList = await jobsRepository.getSavedJobsList(DUMMY_TEACHER_ID);
             setSavedJobIds(savedList);
@@ -118,10 +317,12 @@ export default function JobsPage() {
     };
 
     useEffect(() => {
+        let isMounted = true;
+
         const fetchRoleAndLoad = async () => {
             try {
                 const { data: { user } } = await supabase.auth.getUser();
-                if (user) {
+                if (user && isMounted) {
                     let role = user.user_metadata?.role;
                     if (!role) {
                         const enc = await getUserRoleAction(user.id);
@@ -138,16 +339,22 @@ export default function JobsPage() {
             } catch (err) {
                 console.error("Error fetching user role on jobs page:", err);
             } finally {
-                setRoleLoading(false);
+                if (isMounted) {
+                    setRoleLoading(false);
+                }
+            }
+
+            // Load data once the role query resolves
+            if (isMounted) {
+                await loadData();
             }
         };
 
         fetchRoleAndLoad();
-        loadData();
 
         // Listen for internal job updates triggered on this tab
         const handleReload = () => {
-            loadData();
+            if (isMounted) loadData();
         };
         window.addEventListener('jobs:updated', handleReload);
 
@@ -163,17 +370,30 @@ export default function JobsPage() {
                 'td_notifications_list',
                 'td_logs_list'
             ];
-            if (e.key && keysToSync.includes(e.key)) {
+            if (e.key && keysToSync.includes(e.key) && isMounted) {
                 loadData();
             }
         };
         window.addEventListener('storage', handleStorageChange);
 
         return () => {
+            isMounted = false;
             window.removeEventListener('jobs:updated', handleReload);
             window.removeEventListener('storage', handleStorageChange);
         };
     }, []);
+
+    // Prevent body scrolling when the slideable details modal is open
+    useEffect(() => {
+        if (selectedJobIndex !== null) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
+        }
+        return () => {
+            document.body.style.overflow = '';
+        };
+    }, [selectedJobIndex]);
 
     // Filter counts calculation
     const activeFilterCount = [
@@ -424,473 +644,7 @@ export default function JobsPage() {
         return <LoadingScreen message="Verifying profile access..." />;
     }
 
-    // ─── Animation Variants ───
-    const fadeUp: Variants = {
-        hidden: { opacity: 0, y: 18 },
-        visible: (i = 0) => ({
-            opacity: 1, y: 0,
-            transition: { delay: i * 0.06, duration: 0.42, ease: 'easeOut' },
-        }),
-    };
 
-    // ─── Reusable Sub-components ───
-    const FilterSection = ({ title, children, defaultOpen = true }: {
-        title: string; children: React.ReactNode; defaultOpen?: boolean;
-    }) => {
-        const [open, setOpen] = useState(defaultOpen);
-        return (
-            <div className="border-b border-gray-100 pb-3 mb-3 last:border-0 last:pb-0 last:mb-0">
-                <button
-                    onClick={() => setOpen(o => !o)}
-                    className="w-full flex items-center justify-between text-[13px] font-semibold text-[var(--color-primary)] mb-2"
-                >
-                    {title}
-                    {open ? <FaChevronUp className="text-[10px] opacity-50" /> : <FaChevronDown className="text-[10px] opacity-50" />}
-                </button>
-                <AnimatePresence initial={false}>
-                    {open && (
-                        <motion.div
-                            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }}
-                            className="overflow-hidden"
-                        >
-                            {children}
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-            </div>
-        );
-    };
-
-    const FilterChip = ({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) => {
-        return (
-            <button
-                onClick={onClick}
-                className={`text-2xs px-2.5 py-1 rounded-full border font-bold transition-all duration-200 mb-1 mr-1 ${selected
-                    ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)] shadow-sm'
-                    : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]'
-                    }`}
-            >
-                {label}
-            </button>
-        );
-    };
-
-    const RightPanelCard = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => {
-        return (
-            <div className={`bg-white rounded-xl border border-gray-200 p-4 shadow-2xs hover:shadow-sm transition duration-300 ${className}`}>
-                {children}
-            </div>
-        );
-    };
-
-    const RightPanelTitle = ({ icon, title }: { icon: React.ReactNode; title: string }) => {
-        return (
-            <div className="flex items-center gap-2 mb-3">
-                <span className="text-[var(--color-primary)] text-sm">{icon}</span>
-                <h3 className="text-[12px] font-bold text-[var(--color-primary)] uppercase tracking-wider">{title}</h3>
-            </div>
-        );
-    };
-
-    const JobCard = ({ job, index, saved, hasApplied, matchRating, onToggleSave, onApplyClick, onCardClick }: {
-        job: Job; index: number; saved: boolean; hasApplied: boolean; matchRating: number | null; onToggleSave: (id: string) => void; onApplyClick: (job: Job) => void; onCardClick: (index: number) => void;
-    }) => {
-        const schoolInitial = job.schoolInitial || job.school.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
-        const getSchoolColor = (name: string) => {
-            const colors = ['#1e40af', '#0d9488', '#b45309', '#7c3aed', '#dc2626', '#0891b2', '#059669', '#e11d48'];
-            let hash = 0;
-            for (let i = 0; i < name.length; i++) {
-                hash = name.charCodeAt(i) + ((hash << 5) - hash);
-            }
-            const index = Math.abs(hash) % colors.length;
-            return colors[index];
-        };
-        const schoolColor = job.schoolColor || getSchoolColor(job.school);
-
-        return (
-            <motion.div
-                variants={fadeUp} initial="hidden" animate="visible" custom={index}
-                whileHover={{ y: -2, boxShadow: '0 8px 28px rgba(20,60,100,0.06)' }}
-                transition={{ type: 'spring', stiffness: 280 }}
-                onClick={() => onCardClick(index)}
-                className={`bg-white rounded-xl border p-4 flex flex-col justify-between gap-3.5 cursor-pointer relative overflow-hidden shadow-2xs hover:shadow-md transition duration-300 ${job.isFeatured ? 'border-[var(--color-primary)]/20' : 'border-gray-200'}`}
-            >
-                {job.isFeatured && (
-                    <div className="absolute top-0 right-0 z-10">
-                        <div className="bg-gradient-to-l from-[var(--color-primary)] to-[#1e5a9a] text-white text-[9px] font-bold px-2.5 py-0.5 rounded-bl-xl tracking-widest uppercase">
-                            ⭐ Featured
-                        </div>
-                    </div>
-                )}
-
-                <div>
-                    {/* Header: Logo + Title + Bookmark */}
-                    <div className="flex items-start gap-3 justify-between mb-2">
-                        <div className="flex items-center gap-3">
-                            <div
-                                className="w-11 h-11 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0 shadow-2xs"
-                                style={{ backgroundColor: schoolColor }}
-                            >
-                                {schoolInitial}
-                            </div>
-                            <div className="min-w-0">
-                                <h3 className="text-[13px] font-bold text-gray-800 leading-snug line-clamp-1">
-                                    {job.title}
-                                </h3>
-                                <div className="flex items-center gap-1 mt-0.5">
-                                    <span className="text-[11px] text-gray-500 font-semibold truncate max-w-[130px]">{job.school}</span>
-                                    {job.isVerified && <MdVerified className="text-[var(--color-primary)] text-xs flex-shrink-0" />}
-                                </div>
-                            </div>
-                        </div>
-                        <button
-                            onClick={e => { e.stopPropagation(); onToggleSave(job.id); }}
-                            className="flex-shrink-0 text-gray-300 hover:text-[var(--color-secondary)] transition p-1"
-                        >
-                            {saved
-                                ? <FaBookmark className="text-[var(--color-secondary)] text-sm" />
-                                : <FaRegBookmark className="text-gray-300 hover:text-[var(--color-secondary)] text-sm transition-colors" />
-                            }
-                        </button>
-                    </div>
-
-                    {/* Tags */}
-                    <div className="flex flex-wrap gap-1 mb-3">
-                        {job.tags.slice(0, 3).map((tag, i) => (
-                            <span key={i} className="text-[9px] font-bold px-2.5 py-0.5 rounded-full bg-slate-50 border border-slate-100 text-slate-500">
-                                {tag}
-                            </span>
-                        ))}
-                        <span className="text-[9px] font-bold px-2.5 py-0.5 rounded-full bg-green-50 text-[var(--color-secondary)] border border-green-100">
-                            {job.jobType}
-                        </span>
-                        {matchRating !== null && (
-                            <span className="text-[9px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
-                                {matchRating}% Match
-                            </span>
-                        )}
-                    </div>
-
-                    {/* Meta details */}
-                    <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 border-t border-slate-50 pt-2.5 text-[11px] text-gray-500">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                            <MdLocationOn className="text-gray-400 text-xs flex-shrink-0" />
-                            <span className="truncate">{job.location}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 min-w-0">
-                            <FaRupeeSign className="text-amber-500 text-xs flex-shrink-0" />
-                            <span className="truncate">{job.salary}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 min-w-0">
-                            <FaBriefcase className="text-gray-400 text-xs flex-shrink-0" />
-                            <span className="truncate">{job.experience}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 min-w-0">
-                            <FaGraduationCap className="text-purple-500 text-xs flex-shrink-0" />
-                            <span className="truncate">{job.qualification}</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Footer Apply Button */}
-                <div className="flex items-center justify-between pt-2 border-t border-gray-100 mt-auto">
-                    <div className="flex items-center gap-2">
-                        <span className="flex items-center gap-1 text-[10px] text-gray-400 font-semibold">
-                            <FaClock className="text-[10px]" />{job.postedDate || 'Active'}
-                        </span>
-                        <span className="flex items-center gap-1 text-[10px] text-gray-400 font-semibold">
-                            <FaUserTie className="text-[10px]" />{job.applicants} applied
-                        </span>
-                    </div>
-                    {hasApplied ? (
-                        <button
-                            disabled
-                            className="bg-slate-100 text-slate-400 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-slate-200 flex items-center gap-1"
-                        >
-                            <FaCheckCircle className="text-emerald-500" /> Applied
-                        </button>
-                    ) : (
-                        <button 
-                            onClick={e => { e.stopPropagation(); onApplyClick(job); }}
-                            className="bg-[var(--color-primary)] hover:bg-[var(--color-secondary)] text-white text-[10px] font-bold px-3.5 py-1.5 rounded-lg transition-colors flex items-center gap-1 shadow-2xs"
-                        >
-                            <HiLightningBolt className="text-[11px]" /> Apply
-                        </button>
-                    )}
-                </div>
-            </motion.div>
-        );
-    };
-
-    const FiltersColumn = () => (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-2xs p-4 flex flex-col gap-4">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-                <div className="flex items-center gap-2">
-                    <FaFilter className="text-[var(--color-primary)] text-sm" />
-                    <span className="text-[13px] font-bold text-[var(--color-primary)] uppercase tracking-wider">Search Filters</span>
-                    {activeFilterCount > 0 && (
-                        <span className="bg-[var(--color-secondary)] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                            {activeFilterCount}
-                        </span>
-                    )}
-                </div>
-                {activeFilterCount > 0 && (
-                    <button onClick={resetFilters} className="text-[10px] text-red-500 hover:text-red-700 font-bold flex items-center gap-1">
-                        <FaTimes /> Reset
-                    </button>
-                )}
-            </div>
-
-            <FilterSection title="Subject">
-                <div className="flex flex-wrap gap-1">
-                    {['All Subjects', 'Mathematics', 'Physics', 'English', 'Biology', 'Chemistry', 'Computer Science', 'General', 'Special Education'].map(s => (
-                        <FilterChip key={s} label={s === 'All Subjects' ? 'All' : s} selected={filterSubject === s} onClick={() => setFilterSubject(s)} />
-                    ))}
-                </div>
-            </FilterSection>
-
-            <FilterSection title="Board Type">
-                <div className="flex flex-wrap gap-1">
-                    {['All Boards', 'CBSE', 'ICSE', 'State Board'].map(b => (
-                        <FilterChip key={b} label={b === 'All Boards' ? 'All' : b} selected={filterBoard === b} onClick={() => setFilterBoard(b)} />
-                    ))}
-                </div>
-            </FilterSection>
-
-            <FilterSection title="Grade Level">
-                <div className="flex flex-wrap gap-1">
-                    {['All Levels', 'Primary', 'Middle School', 'High School'].map(g => (
-                        <FilterChip key={g} label={g === 'All Levels' ? 'All' : g} selected={filterGrade === g} onClick={() => setFilterGrade(g)} />
-                    ))}
-                </div>
-            </FilterSection>
-
-            <FilterSection title="Experience">
-                <div className="flex flex-wrap gap-1">
-                    {['Any Experience', 'Fresher', '1-3 Years', '3-5 Years', '5-10 Years', '10+ Years'].map(e => (
-                        <FilterChip key={e} label={e === 'Any Experience' ? 'Any' : e} selected={filterExp === e} onClick={() => setFilterExp(e)} />
-                    ))}
-                </div>
-            </FilterSection>
-
-            <FilterSection title="Salary Range">
-                <div className="flex flex-wrap gap-1">
-                    {['Any Salary', '₹10k–₹20k', '₹20k–₹40k', '₹40k–₹80k'].map(s => (
-                        <FilterChip key={s} label={s === 'Any Salary' ? 'Any' : s} selected={filterSalary === s} onClick={() => setFilterSalary(s)} />
-                    ))}
-                </div>
-            </FilterSection>
-
-            <FilterSection title="Employment Type">
-                <div className="flex flex-wrap gap-1">
-                    {['All Types', 'Full-time', 'Part-time', 'Contract', 'Remote', 'Hybrid'].map(t => (
-                        <FilterChip key={t} label={t === 'All Types' ? 'All' : t} selected={filterType === t} onClick={() => setFilterType(t)} />
-                    ))}
-                </div>
-            </FilterSection>
-
-            {/* Job Alert mini-CTA */}
-            <div className="rounded-xl p-4 text-center select-none shadow-sm" style={{ background: 'linear-gradient(135deg,var(--color-primary),var(--color-secondary))' }}>
-                <FaBell className="mx-auto text-lg text-white/80 mb-1" />
-                <p className="text-[12px] font-bold text-white">Never Miss a Role</p>
-                <p className="text-xs text-white/60 mt-0.5 font-medium">Get email alerts for these filters</p>
-                <button 
-                    onClick={() => {
-                        toast.info("Notifications configured for your preferences.");
-                    }}
-                    className="mt-2.5 w-full bg-white/20 hover:bg-white/30 border border-white/30 text-white text-xs font-semibold py-2 rounded-lg transition-colors"
-                >
-                    Set Job Alerts
-                </button>
-            </div>
-        </div>
-    );
-
-    const RightPanel = () => {
-        const baseScore = resumeData ? 60 : 20;
-        const completePercent = teacherSettings?.openToWork ? baseScore + 20 : baseScore;
-
-        const profileSteps = [
-            { label: 'Basic Info Completed', done: !!DUMMY_TEACHER_ID },
-            { label: 'Resume Uploaded', done: !!resumeData },
-            { label: 'Hiring Settings preference', done: !!teacherSettings },
-            { label: 'Open to Work status', done: !!teacherSettings?.openToWork },
-        ];
-
-        return (
-            <div className="flex flex-col gap-4">
-                {/* 1. Profile Strength */}
-                <RightPanelCard>
-                    <RightPanelTitle icon={<BiTargetLock />} title="Profile Strength" />
-                    <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-gray-500">{completePercent}% Complete</span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${completePercent >= 80 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                            {completePercent >= 80 ? 'Strong' : 'Needs Work'}
-                        </span>
-                    </div>
-                    {/* Progress bar */}
-                    <div className="w-full bg-gray-100 rounded-full h-2 mb-3 overflow-hidden">
-                        <motion.div
-                            className="h-2 rounded-full"
-                            style={{ background: 'linear-gradient(90deg,var(--color-primary),var(--color-secondary))' }}
-                            initial={{ width: 0 }}
-                            animate={{ width: `${completePercent}%` }}
-                            transition={{ duration: 0.9, ease: 'easeOut' }}
-                        />
-                    </div>
-                    {/* Steps */}
-                    <ul className="flex flex-col gap-1.5">
-                        {profileSteps.map((step, i) => (
-                            <li key={i} className="flex items-center gap-2">
-                                {step.done
-                                    ? <FaCheckCircle className="text-[var(--color-secondary)] text-xs flex-shrink-0" />
-                                    : <div className="w-3.5 h-3.5 rounded-full border-2 border-dashed border-gray-300 flex-shrink-0" />
-                                }
-                                <span className={`text-[11px] font-medium ${step.done ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
-                                    {step.label}
-                                </span>
-                            </li>
-                        ))}
-                    </ul>
-                </RightPanelCard>
-
-                {/* 2. Application Tracker */}
-                <RightPanelCard>
-                    <RightPanelTitle icon={<FaCalendarCheck />} title="Application Tracker" />
-                    {applications.length === 0 ? (
-                        <p className="text-2xs text-gray-400 italic">No applications filed yet.</p>
-                    ) : (
-                        <ul className="flex flex-col gap-2">
-                            {applications.slice(0, 3).map((a) => {
-                                const statusColor = 
-                                    a.status === 'Shortlisted' ? 'bg-green-50 text-green-700 border-green-100' :
-                                    a.status === 'Interview Scheduled' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                                    a.status === 'Under Review' ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                                    a.status === 'Rejected' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-slate-50 text-slate-700 border-slate-100';
-
-                                return (
-                                    <li
-                                        key={a.id}
-                                        className="flex items-center justify-between border border-gray-100 rounded-lg px-2.5 py-2 bg-gray-50/20"
-                                    >
-                                        <div className="min-w-0">
-                                            <p className="text-[11px] font-bold text-gray-700 truncate">{a.jobTitle || 'Teaching vacancy'}</p>
-                                            <p className="text-[9px] text-gray-400 truncate">{a.schoolName || 'Institutions Group'}</p>
-                                        </div>
-                                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${statusColor}`}>
-                                            {a.status}
-                                        </span>
-                                    </li>
-                                );
-                            })}
-                        </ul>
-                    )}
-                    <button 
-                        onClick={() => setActiveTab('applied')}
-                        className="mt-2 w-full text-[10px] text-[var(--color-primary)] hover:text-[var(--color-secondary)] font-bold flex items-center justify-center gap-1 transition-colors"
-                    >
-                        View all applications <FaArrowRight className="text-3xs" />
-                    </button>
-                </RightPanelCard>
-
-                {/* 3. Salary Insights */}
-                <RightPanelCard>
-                    <RightPanelTitle icon={<FaChartBar />} title="Salary Insights" />
-                    <p className="text-[9px] text-gray-400 -mt-1 mb-2">Average monthly teaching pay scale</p>
-                    <ul className="flex flex-col gap-2.5">
-                        {[
-                            { subject: 'Mathematics', avg: '₹48K', trend: '+12%', up: true },
-                            { subject: 'Computer Science', avg: '₹52K', trend: '+18%', up: true },
-                            { subject: 'Physics', avg: '₹42K', trend: '+8%', up: true },
-                            { subject: 'English', avg: '₹36K', trend: '-3%', up: false }
-                        ].map((s, i) => (
-                            <li key={i}>
-                                <div className="flex items-center justify-between mb-0.5 text-[11px]">
-                                    <span className="font-semibold text-gray-600">{s.subject}</span>
-                                    <div className="flex items-center gap-1.5 font-bold">
-                                        <span className="text-[var(--color-primary)]">{s.avg}</span>
-                                        <span className={`text-[10px] ${s.up ? 'text-green-600' : 'text-red-500'}`}>
-                                            {s.up ? '↑' : '↓'} {s.trend}
-                                        </span>
-                                    </div>
-                                </div>
-                                <div className="w-full bg-gray-100 rounded-full h-1 overflow-hidden font-semibold">
-                                    <motion.div
-                                        className="h-1 rounded-full bg-[var(--color-primary)]"
-                                        initial={{ width: 0 }}
-                                        animate={{ width: `${40 + i * 15}%` }}
-                                        transition={{ duration: 0.8, delay: i * 0.1, ease: 'easeOut' }}
-                                    />
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                </RightPanelCard>
-
-                {/* 4. Trending searches */}
-                <RightPanelCard>
-                    <RightPanelTitle icon={<FaFireAlt />} title="Trending Now" />
-                    <div className="flex flex-col gap-1">
-                        {['Mathematics CBSE', 'English Teacher', 'Primary Montessori', 'Physics PGT', 'Computer Science'].map((term, i) => (
-                            <button
-                                key={i}
-                                onClick={() => setSearchQuery(term)}
-                                className="flex items-center gap-2 text-left text-2xs text-gray-600 hover:text-[var(--color-primary)] font-bold py-1 border-b border-gray-50 last:border-0 transition-colors group"
-                            >
-                                <span className="text-gray-300 w-3">#{i + 1}</span>
-                                <FaSearch className="text-gray-300 group-hover:text-[var(--color-primary)] transition-colors" />
-                                <span>{term}</span>
-                            </button>
-                        ))}
-                    </div>
-                </RightPanelCard>
-
-                {/* 5. Top Hiring Schools */}
-                <RightPanelCard>
-                    <RightPanelTitle icon={<FaSchool />} title="Top Hiring Schools" />
-                    <ul className="flex flex-col gap-2">
-                        {[
-                            { name: 'Delhi Public School', jobs: 12, color: 'var(--color-primary)', initial: 'DPS' },
-                            { name: 'Ryan International', jobs: 8, color: 'var(--color-secondary)', initial: 'RIS' },
-                            { name: 'Kendriya Vidyalaya', jobs: 21, color: '#b45309', initial: 'KV' }
-                        ].map((sch, i) => (
-                            <li
-                                key={i}
-                                onClick={() => setSearchQuery(sch.name)}
-                                className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-slate-50 transition cursor-pointer group"
-                            >
-                                <div
-                                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0"
-                                    style={{ backgroundColor: sch.color }}
-                                >
-                                    {sch.initial}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-[11px] font-bold text-gray-700 group-hover:text-[var(--color-primary)] transition-colors truncate">{sch.name}</p>
-                                    <p className="text-[9px] text-gray-400">{sch.jobs} open positions</p>
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                </RightPanelCard>
-
-                {/* 6. Career Tip */}
-                <div className="rounded-2xl overflow-hidden shadow-sm" style={{ background: 'linear-gradient(135deg,#0f2a4a 0%,var(--color-primary) 50%,var(--color-secondary) 100%)' }}>
-                    <div className="p-4">
-                        <div className="flex items-center gap-2 mb-2">
-                            <FaLightbulb className="text-amber-300 text-sm" />
-                            <span className="text-[9px] font-black uppercase tracking-widest text-white/60">Career Tip</span>
-                        </div>
-                        <p className="text-[11px] font-medium text-white/90 leading-relaxed">
-                            Schools prioritize candidates who update their profile and submit a <span className="text-amber-300 font-bold">digital resume</span>.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        );
-    };
 
     return (
         <div className="min-h-screen bg-[#eeeeee] text-gray-800 flex flex-col font-sans">
@@ -1138,7 +892,88 @@ export default function JobsPage() {
                             </div>
 
                             {/* Filters Panel */}
-                            <FiltersColumn />
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-2xs p-4 flex flex-col gap-4">
+                                {/* Header */}
+                                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                                    <div className="flex items-center gap-2">
+                                        <FaFilter className="text-[var(--color-primary)] text-sm" />
+                                        <span className="text-[13px] font-bold text-[var(--color-primary)] uppercase tracking-wider">Search Filters</span>
+                                        {activeFilterCount > 0 && (
+                                            <span className="bg-[var(--color-secondary)] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                                {activeFilterCount}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {activeFilterCount > 0 && (
+                                        <button onClick={resetFilters} className="text-[10px] text-red-500 hover:text-red-700 font-bold flex items-center gap-1">
+                                            <FaTimes /> Reset
+                                        </button>
+                                    )}
+                                </div>
+
+                                <FilterSection title="Subject">
+                                    <div className="flex flex-wrap gap-1">
+                                        {['All Subjects', 'Mathematics', 'Physics', 'English', 'Biology', 'Chemistry', 'Computer Science', 'General', 'Special Education'].map(s => (
+                                            <FilterChip key={s} label={s === 'All Subjects' ? 'All' : s} selected={filterSubject === s} onClick={() => setFilterSubject(s)} />
+                                        ))}
+                                    </div>
+                                </FilterSection>
+
+                                <FilterSection title="Board Type">
+                                    <div className="flex flex-wrap gap-1">
+                                        {['All Boards', 'CBSE', 'ICSE', 'State Board'].map(b => (
+                                            <FilterChip key={b} label={b === 'All Boards' ? 'All' : b} selected={filterBoard === b} onClick={() => setFilterBoard(b)} />
+                                        ))}
+                                    </div>
+                                </FilterSection>
+
+                                <FilterSection title="Grade Level">
+                                    <div className="flex flex-wrap gap-1">
+                                        {['All Levels', 'Primary', 'Middle School', 'High School'].map(g => (
+                                            <FilterChip key={g} label={g === 'All Levels' ? 'All' : g} selected={filterGrade === g} onClick={() => setFilterGrade(g)} />
+                                        ))}
+                                    </div>
+                                </FilterSection>
+
+                                <FilterSection title="Experience">
+                                    <div className="flex flex-wrap gap-1">
+                                        {['Any Experience', 'Fresher', '1-3 Years', '3-5 Years', '5-10 Years', '10+ Years'].map(e => (
+                                            <FilterChip key={e} label={e === 'Any Experience' ? 'Any' : e} selected={filterExp === e} onClick={() => setFilterExp(e)} />
+                                        ))}
+                                    </div>
+                                </FilterSection>
+
+                                <FilterSection title="Salary Range">
+                                    <div className="flex flex-wrap gap-1">
+                                        {['Any Salary', '₹10k–₹20k', '₹20k–₹40k', '₹40k–₹80k'].map(s => (
+                                            <FilterChip key={s} label={s === 'Any Salary' ? 'Any' : s} selected={filterSalary === s} onClick={() => setFilterSalary(s)} />
+                                        ))}
+                                    </div>
+                                </FilterSection>
+
+                                <FilterSection title="Employment Type">
+                                    <div className="flex flex-wrap gap-1">
+                                        {['All Types', 'Full-time', 'Part-time', 'Contract', 'Remote', 'Hybrid'].map(t => (
+                                            <FilterChip key={t} label={t === 'All Types' ? 'All' : t} selected={filterType === t} onClick={() => setFilterType(t)} />
+                                        ))}
+                                    </div>
+                                </FilterSection>
+
+                                {/* Job Alert mini-CTA */}
+                                <div className="rounded-xl p-4 text-center select-none shadow-sm" style={{ background: 'linear-gradient(135deg,var(--color-primary),var(--color-secondary))' }}>
+                                    <FaBell className="mx-auto text-lg text-white/80 mb-1" />
+                                    <p className="text-[12px] font-bold text-white">Never Miss a Role</p>
+                                    <p className="text-xs text-white/60 mt-0.5 font-medium">Get email alerts for these filters</p>
+                                    <button 
+                                        onClick={() => {
+                                            toast.info("Notifications configured for your preferences.");
+                                        }}
+                                        className="mt-2.5 w-full bg-white/20 hover:bg-white/30 border border-white/30 text-white text-xs font-semibold py-2 rounded-lg transition-colors"
+                                    >
+                                        Set Job Alerts
+                                    </button>
+                                </div>
+                            </div>
                         </aside>
 
                         {/* Column 2: Dashboard Content feeds (Job results) */}
@@ -1207,7 +1042,189 @@ export default function JobsPage() {
 
                         {/* Column 3: Right Sidebar panel */}
                         <aside className="hidden xl:flex flex-col gap-5 sticky top-24 self-start max-h-[calc(100vh-10rem)] sidebar-scroll pl-1 rounded-lg">
-                            <RightPanel />
+                            {(() => {
+                                const baseScore = resumeData ? 60 : 20;
+                                const completePercent = teacherSettings?.openToWork ? baseScore + 20 : baseScore;
+
+                                const profileSteps = [
+                                    { label: 'Basic Info Completed', done: !!DUMMY_TEACHER_ID },
+                                    { label: 'Resume Uploaded', done: !!resumeData },
+                                    { label: 'Hiring Settings preference', done: !!teacherSettings },
+                                    { label: 'Open to Work status', done: !!teacherSettings?.openToWork },
+                                ];
+
+                                return (
+                                    <div className="flex flex-col gap-4">
+                                        {/* 1. Profile Strength */}
+                                        <RightPanelCard>
+                                            <RightPanelTitle icon={<BiTargetLock />} title="Profile Strength" />
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-xs text-gray-500">{completePercent}% Complete</span>
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${completePercent >= 80 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                    {completePercent >= 80 ? 'Strong' : 'Needs Work'}
+                                                </span>
+                                            </div>
+                                            {/* Progress bar */}
+                                            <div className="w-full bg-gray-100 rounded-full h-2 mb-3 overflow-hidden">
+                                                <motion.div
+                                                    className="h-2 rounded-full"
+                                                    style={{ background: 'linear-gradient(90deg,var(--color-primary),var(--color-secondary))' }}
+                                                    initial={{ width: 0 }}
+                                                    animate={{ width: `${completePercent}%` }}
+                                                    transition={{ duration: 0.9, ease: 'easeOut' }}
+                                                />
+                                            </div>
+                                            {/* Steps */}
+                                            <ul className="flex flex-col gap-1.5">
+                                                {profileSteps.map((step, i) => (
+                                                    <li key={i} className="flex items-center gap-2">
+                                                        {step.done
+                                                            ? <FaCheckCircle className="text-[var(--color-secondary)] text-xs flex-shrink-0" />
+                                                            : <div className="w-3.5 h-3.5 rounded-full border-2 border-dashed border-gray-300 flex-shrink-0" />
+                                                        }
+                                                        <span className={`text-[11px] font-medium ${step.done ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
+                                                            {step.label}
+                                                        </span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </RightPanelCard>
+
+                                        {/* 2. Application Tracker */}
+                                        <RightPanelCard>
+                                            <RightPanelTitle icon={<FaCalendarCheck />} title="Application Tracker" />
+                                            {applications.length === 0 ? (
+                                                <p className="text-2xs text-gray-400 italic">No applications filed yet.</p>
+                                            ) : (
+                                                <ul className="flex flex-col gap-2">
+                                                    {applications.slice(0, 3).map((a) => {
+                                                        const statusColor = 
+                                                            a.status === 'Shortlisted' ? 'bg-green-50 text-green-700 border-green-100' :
+                                                            a.status === 'Interview Scheduled' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                                                            a.status === 'Under Review' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                                                            a.status === 'Rejected' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-slate-50 text-slate-700 border-slate-100';
+
+                                                        return (
+                                                            <li
+                                                                key={a.id}
+                                                                className="flex items-center justify-between border border-gray-100 rounded-lg px-2.5 py-2 bg-gray-50/20"
+                                                            >
+                                                                <div className="min-w-0">
+                                                                    <p className="text-[11px] font-bold text-gray-700 truncate">{a.jobTitle || 'Teaching vacancy'}</p>
+                                                                    <p className="text-[9px] text-gray-400 truncate">{a.schoolName || 'Institutions Group'}</p>
+                                                                </div>
+                                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${statusColor}`}>
+                                                                    {a.status}
+                                                                </span>
+                                                            </li>
+                                                        );
+                                                    })}
+                                                </ul>
+                                            )}
+                                            <button 
+                                                onClick={() => setActiveTab('applied')}
+                                                className="mt-2 w-full text-[10px] text-[var(--color-primary)] hover:text-[var(--color-secondary)] font-bold flex items-center justify-center gap-1 transition-colors"
+                                            >
+                                                View all applications <FaArrowRight className="text-3xs" />
+                                            </button>
+                                        </RightPanelCard>
+
+                                        {/* 3. Salary Insights */}
+                                        <RightPanelCard>
+                                            <RightPanelTitle icon={<FaChartBar />} title="Salary Insights" />
+                                            <p className="text-[9px] text-gray-400 -mt-1 mb-2">Average monthly teaching pay scale</p>
+                                            <ul className="flex flex-col gap-2.5">
+                                                {[
+                                                    { subject: 'Mathematics', avg: '₹48K', trend: '+12%', up: true },
+                                                    { subject: 'Computer Science', avg: '₹52K', trend: '+18%', up: true },
+                                                    { subject: 'Physics', avg: '₹42K', trend: '+8%', up: true },
+                                                    { subject: 'English', avg: '₹36K', trend: '-3%', up: false }
+                                                ].map((s, i) => (
+                                                    <li key={i}>
+                                                        <div className="flex items-center justify-between mb-0.5 text-[11px]">
+                                                            <span className="font-semibold text-gray-600">{s.subject}</span>
+                                                            <div className="flex items-center gap-1.5 font-bold">
+                                                                <span className="text-[var(--color-primary)]">{s.avg}</span>
+                                                                <span className={`text-[10px] ${s.up ? 'text-green-600' : 'text-red-500'}`}>
+                                                                    {s.up ? '↑' : '↓'} {s.trend}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-full bg-gray-100 rounded-full h-1 overflow-hidden font-semibold">
+                                                            <motion.div
+                                                                className="h-1 rounded-full bg-[var(--color-primary)]"
+                                                                initial={{ width: 0 }}
+                                                                animate={{ width: `${40 + i * 15}%` }}
+                                                                transition={{ duration: 0.8, delay: i * 0.1, ease: 'easeOut' }}
+                                                            />
+                                                        </div>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </RightPanelCard>
+
+                                        {/* 4. Trending searches */}
+                                        <RightPanelCard>
+                                            <RightPanelTitle icon={<FaFireAlt />} title="Trending Now" />
+                                            <div className="flex flex-col gap-1">
+                                                {['Mathematics CBSE', 'English Teacher', 'Primary Montessori', 'Physics PGT', 'Computer Science'].map((term, i) => (
+                                                    <button
+                                                        key={i}
+                                                        onClick={() => setSearchQuery(term)}
+                                                        className="flex items-center gap-2 text-left text-2xs text-gray-600 hover:text-[var(--color-primary)] font-bold py-1 border-b border-gray-50 last:border-0 transition-colors group"
+                                                    >
+                                                        <span className="text-gray-300 w-3">#{i + 1}</span>
+                                                        <FaSearch className="text-gray-300 group-hover:text-[var(--color-primary)] transition-colors" />
+                                                        <span>{term}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </RightPanelCard>
+
+                                        {/* 5. Top Hiring Schools */}
+                                        <RightPanelCard>
+                                            <RightPanelTitle icon={<FaSchool />} title="Top Hiring Schools" />
+                                            <ul className="flex flex-col gap-2">
+                                                {[
+                                                    { name: 'Delhi Public School', jobs: 12, color: 'var(--color-primary)', initial: 'DPS' },
+                                                    { name: 'Ryan International', jobs: 8, color: 'var(--color-secondary)', initial: 'RIS' },
+                                                    { name: 'Kendriya Vidyalaya', jobs: 21, color: '#b45309', initial: 'KV' }
+                                                ].map((sch, i) => (
+                                                    <li
+                                                        key={i}
+                                                        onClick={() => setSearchQuery(sch.name)}
+                                                        className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-slate-50 transition cursor-pointer group"
+                                                    >
+                                                        <div
+                                                            className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0"
+                                                            style={{ backgroundColor: sch.color }}
+                                                        >
+                                                            {sch.initial}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-[11px] font-bold text-gray-700 group-hover:text-[var(--color-primary)] transition-colors truncate">{sch.name}</p>
+                                                            <p className="text-[9px] text-gray-400">{sch.jobs} open positions</p>
+                                                        </div>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </RightPanelCard>
+
+                                        {/* 6. Career Tip */}
+                                        <div className="rounded-2xl overflow-hidden shadow-sm" style={{ background: 'linear-gradient(135deg,#0f2a4a 0%,var(--color-primary) 50%,var(--color-secondary) 100%)' }}>
+                                            <div className="p-4">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <FaLightbulb className="text-amber-300 text-sm" />
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-white/60">Career Tip</span>
+                                                </div>
+                                                <p className="text-[11px] font-medium text-white/90 leading-relaxed">
+                                                    Schools prioritize candidates who update their profile and submit a <span className="text-amber-300 font-bold">digital resume</span>.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </aside>
                     </div>
                 ) : (

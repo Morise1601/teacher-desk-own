@@ -339,7 +339,7 @@ const DashboardPage = () => {
 
                     {/* --- LEFT SECTION --- */}
                     <motion.div
-                        className="col-span-1 flex flex-col gap-6"
+                        className="col-span-1 flex flex-col gap-6 h-fit"
                         initial="hidden"
                         animate="visible"
                         variants={{
@@ -487,7 +487,7 @@ const DashboardPage = () => {
 
                     {/* --- RIGHT SECTION (Responsive: Grids dynamically on Tablets, spans list on Desktops) --- */}
                     <motion.div
-                        className="md:col-span-full lg:col-span-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-6"
+                        className="md:col-span-full lg:col-span-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-6 h-fit items-start"
                         initial="hidden"
                         animate="visible"
                         variants={{
