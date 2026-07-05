@@ -479,6 +479,30 @@ export async function commentPostAction(encryptedPayload: string) {
       }
     };
 
+    // Parse @[Name](userId) from commentText and notify tagged users
+    const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
+    let match;
+    const notifiedUserIds = new Set<string>();
+
+    while ((match = mentionRegex.exec(commentText)) !== null) {
+      const taggedUserId = match[2];
+      // Prevent notifying self
+      if (taggedUserId && taggedUserId !== userId && !notifiedUserIds.has(taggedUserId)) {
+        notifiedUserIds.add(taggedUserId);
+        
+        await supabaseAdmin
+          .from('notifications')
+          .insert([{
+            user_id: taggedUserId,
+            title: "Mentioned in comment",
+            message: `${fullName} mentioned you in a comment.`,
+            type: "mention",
+            action_url: `/dashboard?post=${postId}`,
+            is_read: false
+          }]);
+      }
+    }
+
     return encryptData({ success: true, data: commentWithAuthor });
   } catch (err: any) {
     console.error("❌ [COMMENT POST ERROR]:", err.message);
@@ -854,25 +878,29 @@ export async function deletePostAction(encryptedPayload: string) {
 export async function searchUsersAction(encryptedPayload: string) {
   try {
     const { query } = decryptData(encryptedPayload);
-    if (!query || query.trim().length === 0) {
-      return encryptData({ success: true, data: [] });
-    }
-
-    const searchQuery = query.trim();
+    const searchQuery = query ? query.trim() : "";
 
     // Search teachers
-    const { data: teachers } = await supabaseAdmin
+    let teacherQuery = supabaseAdmin
       .from('teachers')
       .select('auth_id, full_name, role_type')
-      .ilike('full_name', `%${searchQuery}%`)
       .limit(10);
 
+    if (searchQuery) {
+      teacherQuery = teacherQuery.ilike('full_name', `%${searchQuery}%`);
+    }
+    const { data: teachers } = await teacherQuery;
+
     // Search institutions
-    const { data: institutions } = await supabaseAdmin
+    let instQuery = supabaseAdmin
       .from('institutions')
       .select('auth_id, name, role_type')
-      .ilike('name', `%${searchQuery}%`)
       .limit(10);
+
+    if (searchQuery) {
+      instQuery = instQuery.ilike('name', `%${searchQuery}%`);
+    }
+    const { data: institutions } = await instQuery;
 
     // Combine results
     const results: any[] = [];
@@ -1081,6 +1109,224 @@ export async function updatePostContentAction(encryptedPayload: string) {
     return encryptData({ success: true });
   } catch (err: any) {
     console.error("❌ [UPDATE POST CONTENT ERROR]:", err.message);
+    return encryptData({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Updates a post's content and its media attachments (deleting specified ones and adding new ones).
+ */
+export async function updatePostAction(encryptedPayload: string) {
+  try {
+    const { userId, postId, content, postType, deletedMediaIds, newFiles } = decryptData(encryptedPayload);
+    if (!userId || !postId) throw new Error("Missing parameters.");
+
+    // 1. Verify ownership or super admin role
+    const { data: post } = await supabaseAdmin
+      .from('posts')
+      .select('user_id, post_type')
+      .eq('id', postId)
+      .single();
+
+    if (!post) throw new Error("Post not found.");
+
+    if (post.user_id !== userId) {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
+      if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
+        throw new Error("Unauthorized post edit.");
+      }
+    }
+
+    const originalPostType = post.post_type;
+    const targetPostType = postType || originalPostType;
+
+    // 2. Update post text content & post type if changed
+    const updatePayload: any = {};
+    if (content !== undefined) {
+      updatePayload.content = content.trim();
+    }
+    if (targetPostType !== originalPostType) {
+      updatePayload.post_type = targetPostType;
+    }
+
+    if (Object.keys(updatePayload).length > 0) {
+      const { error: updateErr } = await supabaseAdmin
+        .from('posts')
+        .update(updatePayload)
+        .eq('id', postId);
+
+      if (updateErr) throw updateErr;
+    }
+
+    // 3. Handle media deletion
+    // If post type changed, delete ALL existing media for this post.
+    // Otherwise delete the explicitly specified media IDs.
+    let mediaIdsToDelete: string[] = [];
+    if (targetPostType !== originalPostType) {
+      const { data: existingMedia } = await supabaseAdmin
+        .from('post_media')
+        .select('id')
+        .eq('post_id', postId);
+      if (existingMedia && existingMedia.length > 0) {
+        mediaIdsToDelete = existingMedia.map(m => m.id);
+      }
+    } else if (deletedMediaIds && deletedMediaIds.length > 0) {
+      mediaIdsToDelete = deletedMediaIds;
+    }
+
+    if (mediaIdsToDelete.length > 0) {
+      // Get URLs to delete from storage
+      const { data: mediaToDelete } = await supabaseAdmin
+        .from('post_media')
+        .select('id, file_url')
+        .in('id', mediaIdsToDelete)
+        .eq('post_id', postId);
+
+      if (mediaToDelete && mediaToDelete.length > 0) {
+        for (const m of mediaToDelete) {
+          const parts = m.file_url.split('/');
+          const bucket = parts.includes('post-images') ? 'post-images' : 'post-resources';
+          const folderIndex = parts.indexOf(bucket);
+          if (folderIndex !== -1 && folderIndex + 2 < parts.length) {
+            const filePath = parts.slice(folderIndex + 1).join('/');
+            await supabaseAdmin.storage.from(bucket).remove([filePath]);
+          }
+        }
+
+        // Delete records from database
+        const { error: deleteMediaErr } = await supabaseAdmin
+          .from('post_media')
+          .delete()
+          .in('id', mediaIdsToDelete)
+          .eq('post_id', postId);
+
+        if (deleteMediaErr) throw deleteMediaErr;
+      }
+    }
+
+    // 4. Handle new media uploads
+    if (newFiles && newFiles.length > 0) {
+      if (targetPostType === 'image') {
+        // Retrieve current image count to ensure we don't exceed 5
+        const { count, error: countErr } = await supabaseAdmin
+          .from('post_media')
+          .select('id', { count: 'exact', head: true })
+          .eq('post_id', postId);
+
+        if (countErr) throw countErr;
+        const currentCount = count || 0;
+        if (currentCount + newFiles.length > 5) {
+          throw new Error("A maximum of 5 images are allowed per post.");
+        }
+
+        for (const file of newFiles) {
+          validateImage(file.name, file.base64);
+
+          const base64Data = file.base64.replace(/^data:image\/\w+;base64,/, '');
+          const buffer = Buffer.from(base64Data, 'base64');
+          const ext = file.name.split('.').pop() || 'jpg';
+          const filePath = `${post.user_id}/${postId}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}.${ext}`;
+
+          const { error: uploadError } = await supabaseAdmin.storage
+            .from('post-images')
+            .upload(filePath, buffer, {
+              contentType: `image/${ext}`,
+              upsert: true
+            });
+
+          if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
+
+          const { data: { publicUrl } } = supabaseAdmin.storage
+            .from('post-images')
+            .getPublicUrl(filePath);
+
+          const { error: mediaErr } = await supabaseAdmin
+            .from('post_media')
+            .insert([{
+              post_id: postId,
+              file_url: publicUrl,
+              file_type: `image/${ext}`,
+              file_name: file.name
+            }]);
+
+          if (mediaErr) throw mediaErr;
+        }
+      } else if (targetPostType === 'resource') {
+        // A resource post must have exactly one PDF.
+        if (newFiles.length !== 1) {
+          throw new Error("Exactly one PDF file must be attached for resource sharing.");
+        }
+
+        const file = newFiles[0];
+        validatePDF(file.name, file.base64);
+
+        const base64Data = file.base64.replace(/^data:application\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        
+        const cleanFileName = file.name
+          .replace(/[^a-zA-Z0-9._-]/g, '_')
+          .replace(/_+/g, '_');
+        const filePath = `${post.user_id}/${postId}_${Date.now()}_${cleanFileName}`;
+
+        // 1. Upload new file
+        const { error: uploadError } = await supabaseAdmin.storage
+          .from('post-resources')
+          .upload(filePath, buffer, {
+            contentType: 'application/pdf',
+            upsert: true
+          });
+
+        if (uploadError) throw new Error(`PDF upload failed: ${uploadError.message}`);
+
+        const { data: { publicUrl } } = supabaseAdmin.storage
+          .from('post-resources')
+          .getPublicUrl(filePath);
+
+        // 2. Find and delete old resource files from database and storage
+        const { data: oldMedia } = await supabaseAdmin
+          .from('post_media')
+          .select('id, file_url')
+          .eq('post_id', postId);
+
+        if (oldMedia && oldMedia.length > 0) {
+          for (const m of oldMedia) {
+            const parts = m.file_url.split('/');
+            const folderIndex = parts.indexOf('post-resources');
+            if (folderIndex !== -1 && folderIndex + 2 < parts.length) {
+              const oldFilePath = parts.slice(folderIndex + 1).join('/');
+              await supabaseAdmin.storage.from('post-resources').remove([oldFilePath]);
+            }
+          }
+
+          const { error: deleteOldErr } = await supabaseAdmin
+            .from('post_media')
+            .delete()
+            .eq('post_id', postId);
+
+          if (deleteOldErr) throw deleteOldErr;
+        }
+
+        // 3. Save reference in post_media
+        const { error: mediaErr } = await supabaseAdmin
+          .from('post_media')
+          .insert([{
+            post_id: postId,
+            file_url: publicUrl,
+            file_type: 'application/pdf',
+            file_name: file.name
+          }]);
+
+        if (mediaErr) throw mediaErr;
+      }
+    }
+
+    return encryptData({ success: true });
+  } catch (err: any) {
+    console.error("❌ [UPDATE POST ACTION ERROR]:", err.message);
     return encryptData({ success: false, message: err.message });
   }
 }

@@ -20,6 +20,7 @@ import {
     getPostTagsAction,
     updatePostTagsAction,
     updatePostContentAction,
+    updatePostAction,
     searchUsersAction,
     editCommentAction
 } from '@/app/actions/posts';
@@ -27,7 +28,7 @@ import { decryptData, encryptData } from '@/lib/crypto';
 import { getProfileByUserIdAction } from '@/app/actions/profile';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import Modal from '@/app/shared/Modal';
-import { FaHeart, FaRegHeart, FaComment, FaShare, FaBookmark, FaRegBookmark, FaRetweet, FaTrash, FaDownload, FaFilePdf, FaClock, FaUserTag, FaEllipsisV, FaTimes, FaWhatsapp, FaTwitter, FaEnvelope, FaInstagram, FaCopy, FaCheck, FaEdit } from 'react-icons/fa';
+import { FaHeart, FaRegHeart, FaComment, FaShare, FaBookmark, FaRegBookmark, FaRetweet, FaTrash, FaDownload, FaFilePdf, FaClock, FaUserTag, FaEllipsisV, FaTimes, FaWhatsapp, FaTwitter, FaEnvelope, FaInstagram, FaCopy, FaCheck, FaEdit, FaPlusCircle } from 'react-icons/fa';
 
 interface UserFeedPostProps {
     id: string;
@@ -239,6 +240,157 @@ export default function UserFeedPost({
     const [isEditingPost, setIsEditingPost] = useState(false);
     const [editedContent, setEditedContent] = useState(content || '');
     const [isSavingPost, setIsSavingPost] = useState(false);
+
+    // Post Media Editing states
+    const [editExistingMedia, setEditExistingMedia] = useState<any[]>([]);
+    const [deletedMediaIds, setDeletedMediaIds] = useState<string[]>([]);
+    const [editNewFiles, setEditNewFiles] = useState<Array<{ base64: string, name: string, type?: string }>>([]);
+    const [editNewImagePreviews, setEditNewImagePreviews] = useState<string[]>([]);
+    const editImageInputRef = useRef<HTMLInputElement>(null);
+    const editPdfInputRef = useRef<HTMLInputElement>(null);
+
+    const hasImages = editExistingMedia.some(m => m.file_type?.startsWith('image/')) || 
+                      editNewFiles.some(f => f.type?.startsWith('image/'));
+
+    const hasPdf = editExistingMedia.some(m => m.file_type === 'application/pdf') || 
+                    editNewFiles.some(f => f.type === 'application/pdf');
+
+    const replyInputRef = useRef<HTMLInputElement>(null);
+    const postRef = useRef<HTMLDivElement>(null);
+
+    const [commentMentionResults, setCommentMentionResults] = useState<any[]>([]);
+    const [selectedMentions, setSelectedMentions] = useState<Array<{ fullName: string, user_id: string }>>([]);
+
+    const handleCommentChange = async (val: string) => {
+        setNewComment(val);
+        const caretPos = commentInputRef.current?.selectionStart || 0;
+        const textBeforeCaret = val.substring(0, caretPos);
+        const lastAtIdx = textBeforeCaret.lastIndexOf('@');
+        
+        if (lastAtIdx !== -1 && !textBeforeCaret.substring(lastAtIdx).includes(' ')) {
+            const query = textBeforeCaret.substring(lastAtIdx + 1);
+            try {
+                const payload = encryptData({ query });
+                const res = decryptData(await searchUsersAction(payload));
+                if (res.success && res.data) {
+                    setCommentMentionResults(res.data);
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        } else {
+            setCommentMentionResults([]);
+        }
+    };
+
+    const handleReplyChange = async (val: string) => {
+        setReplyText(val);
+        const caretPos = replyInputRef.current?.selectionStart || 0;
+        const textBeforeCaret = val.substring(0, caretPos);
+        const lastAtIdx = textBeforeCaret.lastIndexOf('@');
+        
+        if (lastAtIdx !== -1 && !textBeforeCaret.substring(lastAtIdx).includes(' ')) {
+            const query = textBeforeCaret.substring(lastAtIdx + 1);
+            try {
+                const payload = encryptData({ query });
+                const res = decryptData(await searchUsersAction(payload));
+                if (res.success && res.data) {
+                    setCommentMentionResults(res.data);
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        } else {
+            setCommentMentionResults([]);
+        }
+    };
+
+    const handleSelectMentionUser = (user: any, isReply = false) => {
+        const input = isReply ? replyInputRef.current : commentInputRef.current;
+        if (!input) return;
+        
+        const val = isReply ? replyText : newComment;
+        const caretPos = input.selectionStart || 0;
+        const textBeforeCaret = val.substring(0, caretPos);
+        const textAfterCaret = val.substring(caretPos);
+        const lastAtIdx = textBeforeCaret.lastIndexOf('@');
+        
+        if (lastAtIdx !== -1) {
+            const beforeMention = textBeforeCaret.substring(0, lastAtIdx);
+            const formattedTag = `@${user.fullName} `;
+            const newVal = beforeMention + formattedTag + textAfterCaret;
+            
+            if (isReply) {
+                setReplyText(newVal);
+            } else {
+                setNewComment(newVal);
+            }
+            
+            setSelectedMentions(prev => {
+                if (prev.some(m => m.user_id === user.user_id)) return prev;
+                return [...prev, { fullName: user.fullName, user_id: user.user_id }];
+            });
+            
+            setCommentMentionResults([]);
+            
+            setTimeout(() => {
+                input.focus();
+                const newCaretPos = lastAtIdx + formattedTag.length;
+                input.setSelectionRange(newCaretPos, newCaretPos);
+            }, 50);
+        }
+    };
+
+    const renderCommentText = (text: string) => {
+        if (!text) return "";
+        
+        const regex = /@\[([^\]]+)\]\(([^)]+)\)/g;
+        const parts: any[] = [];
+        let lastIndex = 0;
+        let match;
+        
+        while ((match = regex.exec(text)) !== null) {
+            const matchIndex = match.index;
+            
+            if (matchIndex > lastIndex) {
+                parts.push(text.substring(lastIndex, matchIndex));
+            }
+            
+            const fullName = match[1];
+            const userId = match[2];
+            
+            parts.push(
+                <span 
+                    key={matchIndex} 
+                    className="font-semibold text-indigo-600 bg-indigo-50/50 hover:bg-indigo-100 border border-indigo-100/30 px-2 py-0.5 rounded-full text-[11px] transition-all"
+                >
+                    @{fullName}
+                </span>
+            );
+            
+            lastIndex = regex.lastIndex;
+        }
+        
+        if (lastIndex < text.length) {
+            parts.push(text.substring(lastIndex));
+        }
+        
+        return parts.length > 0 ? parts : text;
+    };
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const targetPostId = params.get('post');
+            if (targetPostId && targetPostId === id) {
+                setTimeout(() => {
+                    postRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    setShowComments(true);
+                    fetchComments();
+                }, 300);
+            }
+        }
+    }, [id]);
 
     useEffect(() => {
         const fetchTags = async () => {
@@ -488,17 +640,24 @@ export default function UserFeedPost({
         e.preventDefault();
         if (!newComment.trim()) return;
 
+        let finalCommentText = newComment.trim();
+        selectedMentions.forEach(mention => {
+            const tagToReplace = `@${mention.fullName}`;
+            finalCommentText = finalCommentText.split(tagToReplace).join(`@[${mention.fullName}](${mention.user_id})`);
+        });
+
         setIsSavingComment(true);
         try {
             const payload = encryptData({
                 userId: currentUserId,
                 postId: id,
-                commentText: newComment.trim()
+                commentText: finalCommentText
             });
             const res = decryptData(await commentPostAction(payload));
             if (res.success && res.data) {
                 setCommentsList(prev => [...prev, res.data]);
                 setNewComment('');
+                setSelectedMentions([]);
                 setTotalComments(prev => prev + 1);
                 toast.success("Comment added.");
             } else {
@@ -515,18 +674,25 @@ export default function UserFeedPost({
         e.preventDefault();
         if (!replyText.trim()) return;
 
+        let finalReplyText = replyText.trim();
+        selectedMentions.forEach(mention => {
+            const tagToReplace = `@${mention.fullName}`;
+            finalReplyText = finalReplyText.split(tagToReplace).join(`@[${mention.fullName}](${mention.user_id})`);
+        });
+
         setIsSavingReply(true);
         try {
             const payload = encryptData({
                 userId: currentUserId,
                 postId: id,
-                commentText: replyText.trim(),
+                commentText: finalReplyText,
                 parentCommentId: parentId
             });
             const res = decryptData(await commentPostAction(payload));
             if (res.success && res.data) {
                 setCommentsList(prev => [...prev, res.data]);
                 setReplyText('');
+                setSelectedMentions([]);
                 setReplyingToId(null);
                 setTotalComments(prev => prev + 1);
                 toast.success("Reply added.");
@@ -544,12 +710,18 @@ export default function UserFeedPost({
         e.preventDefault();
         if (!editingText.trim()) return;
 
+        let finalEditText = editingText.trim();
+        selectedMentions.forEach(mention => {
+            const tagToReplace = `@${mention.fullName}`;
+            finalEditText = finalEditText.split(tagToReplace).join(`@[${mention.fullName}](${mention.user_id})`);
+        });
+
         setIsSavingEdit(true);
         try {
             const payload = encryptData({
                 userId: currentUserId,
                 commentId,
-                commentText: editingText.trim()
+                commentText: finalEditText
             });
             const res = decryptData(await editCommentAction(payload));
             if (res.success && res.data) {
@@ -600,18 +772,112 @@ export default function UserFeedPost({
         }
     };
 
+    const handleEditImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        const currentTotal = editExistingMedia.length + editNewFiles.length;
+        if (currentTotal + files.length > 5) {
+            toast.error("A maximum of 5 images are allowed per post.");
+            return;
+        }
+
+        Array.from(files).forEach(file => {
+            if (file.size > 5 * 1024 * 1024) {
+                toast.error(`${file.name} exceeds the 5MB size limit.`);
+                return;
+            }
+            if (!['image/jpeg', 'image/png', 'image/jpg', 'image/webp'].includes(file.type)) {
+                toast.error(`${file.name} is not a supported image format.`);
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64 = reader.result as string;
+                setEditNewFiles(prev => [...prev, { base64, name: file.name, type: file.type }]);
+                setEditNewImagePreviews(prev => [...prev, base64]);
+            };
+            reader.readAsDataURL(file);
+        });
+
+        if (editImageInputRef.current) editImageInputRef.current.value = '';
+    };
+
+    const handleRemoveExistingImage = (mediaId: string) => {
+        setEditExistingMedia(prev => prev.filter(m => m.id !== mediaId));
+        setDeletedMediaIds(prev => [...prev, mediaId]);
+    };
+
+    const handleRemoveNewImage = (index: number) => {
+        setEditNewFiles(prev => prev.filter((_, i) => i !== index));
+        setEditNewImagePreviews(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleEditPdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        const file = files[0];
+
+        if (file.type !== 'application/pdf') {
+            toast.error("Only PDF files are supported.");
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            toast.error("PDF exceeds the 10MB size limit.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setEditNewFiles([{ base64: reader.result as string, name: file.name, type: file.type }]);
+            // If there's an existing PDF, mark it as deleted
+            if (editExistingMedia.length > 0) {
+                setDeletedMediaIds([editExistingMedia[0].id]);
+                setEditExistingMedia([]);
+            }
+        };
+        reader.readAsDataURL(file);
+
+        if (editPdfInputRef.current) editPdfInputRef.current.value = '';
+    };
+
+    const handleRemoveExistingPdf = (mediaId: string) => {
+        setEditExistingMedia([]);
+        setDeletedMediaIds([mediaId]);
+    };
+
+    const handleRemoveNewPdf = () => {
+        setEditNewFiles([]);
+    };
+
     const handleUpdatePostContent = async () => {
         if (!editedContent.trim()) {
             toast.error("Post content cannot be empty.");
             return;
         }
 
+        if (hasImages && hasPdf) {
+            toast.error("A post cannot contain both images and a PDF resource.");
+            return;
+        }
+
+        let calculatedPostType: 'text' | 'image' | 'resource' = 'text';
+        if (hasImages) {
+            calculatedPostType = 'image';
+        } else if (hasPdf) {
+            calculatedPostType = 'resource';
+        }
+
         setIsSavingPost(true);
         try {
-            const res = decryptData(await updatePostContentAction(encryptData({
+            const res = decryptData(await updatePostAction(encryptData({
                 userId: currentUserId,
                 postId: id,
-                content: editedContent
+                content: editedContent,
+                postType: calculatedPostType,
+                deletedMediaIds,
+                newFiles: editNewFiles
             })));
 
             if (res.success) {
@@ -713,6 +979,7 @@ export default function UserFeedPost({
 
     return (
         <motion.div
+            ref={postRef}
             className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-3 group/card relative"
             whileHover={{ boxShadow: "0 4px 20px rgba(0,0,0,0.02)" }}
             transition={{ duration: 0.2 }}
@@ -785,6 +1052,11 @@ export default function UserFeedPost({
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setShowOptionsMenu(false);
+                                                setEditedContent(content || '');
+                                                setEditExistingMedia(media || []);
+                                                setDeletedMediaIds([]);
+                                                setEditNewFiles([]);
+                                                setEditNewImagePreviews([]);
                                                 setIsEditingPost(true);
                                             }}
                                             className="flex items-center gap-2 px-3.5 py-2 hover:bg-gray-50 text-left text-gray-700 font-bold border-t border-gray-50"
@@ -1197,12 +1469,30 @@ export default function UserFeedPost({
                                     ref={commentInputRef}
                                     type="text"
                                     value={newComment}
-                                    onChange={(e) => setNewComment(e.target.value)}
-                                    placeholder="Add a comment..."
+                                    onChange={(e) => handleCommentChange(e.target.value)}
+                                    placeholder="Add a comment... (Type @ to tag someone)"
                                     className="w-full text-xs text-gray-700 border border-gray-200 bg-gray-50 hover:bg-white focus:bg-white rounded-full pl-4 pr-20 py-2.5 outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
                                     required
                                     maxLength={500}
                                 />
+                                {commentMentionResults.length > 0 && !replyingToId && (
+                                    <div className="absolute top-11 left-2 bg-white border border-gray-200 rounded-xl shadow-xl z-50 py-1 w-64 max-h-48 overflow-y-auto">
+                                        {commentMentionResults.map((user, idx) => (
+                                            <button
+                                                key={`${user.user_id || 'user'}-${idx}`}
+                                                type="button"
+                                                onClick={() => handleSelectMentionUser(user, false)}
+                                                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 text-left transition-colors"
+                                            >
+                                                <UserAvatar src={user.profile_pic_url} name={user.fullName} className="w-6 h-6 rounded-full border" />
+                                                <div className="min-w-0 flex-grow">
+                                                    <div className="text-xs font-bold text-gray-800 truncate">{user.fullName}</div>
+                                                    <div className="text-[10px] text-gray-400 truncate">{user.headline || 'Educator'}</div>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
                                     <EmojiPicker onEmojiSelect={handleCommentEmojiSelect} align="right" buttonClassName="hover:bg-gray-100 p-1 rounded-full" />
                                     <button
@@ -1287,7 +1577,7 @@ export default function UserFeedPost({
                                                             </form>
                                                         ) : (
                                                             <>
-                                                                <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap mb-1">{c.comment_text}</p>
+                                                                <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap mb-1">{renderCommentText(c.comment_text)}</p>
                                                                 {/* Reply Action Button */}
                                                                 <div className="flex items-center gap-3.5 mt-1 pt-0.5">
                                                                     <button 
@@ -1311,7 +1601,8 @@ export default function UserFeedPost({
                                                             <button 
                                                                 onClick={() => {
                                                                     setEditingCommentId(c.id);
-                                                                    setEditingText(c.comment_text);
+                                                                    const plainText = c.comment_text.replace(/@\[([^\]]+)\]\(([^)]+)\)/g, '@$1');
+                                                                    setEditingText(plainText);
                                                                     setReplyingToId(null);
                                                                 }}
                                                                 className="text-gray-300 hover:text-blue-500 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
@@ -1342,15 +1633,34 @@ export default function UserFeedPost({
                                                         />
                                                         <div className="flex-grow relative flex items-center">
                                                             <input
+                                                                ref={replyInputRef}
                                                                 type="text"
                                                                 value={replyText}
-                                                                onChange={(e) => setReplyText(e.target.value)}
-                                                                placeholder={`Reply to ${c.author_profile?.fullName || "Member"}...`}
+                                                                onChange={(e) => handleReplyChange(e.target.value)}
+                                                                placeholder={`Reply to ${c.author_profile?.fullName || "Member"}... (Type @ to tag)`}
                                                                 className="w-full text-xs text-gray-700 border border-gray-200 bg-gray-50 hover:bg-white focus:bg-white rounded-full pl-3 pr-16 py-1.5 outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
                                                                 required
                                                                 maxLength={500}
                                                                 autoFocus
                                                             />
+                                                            {commentMentionResults.length > 0 && replyingToId === c.id && (
+                                                                <div className="absolute top-10 left-2 bg-white border border-gray-200 rounded-xl shadow-xl z-50 py-1 w-64 max-h-48 overflow-y-auto">
+                                                                    {commentMentionResults.map((user, idx) => (
+                                                                        <button
+                                                                            key={`${user.user_id || 'user'}-${idx}`}
+                                                                            type="button"
+                                                                            onClick={() => handleSelectMentionUser(user, true)}
+                                                                            className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 text-left transition-colors"
+                                                                        >
+                                                                            <UserAvatar src={user.profile_pic_url} name={user.fullName} className="w-6 h-6 rounded-full border" />
+                                                                            <div className="min-w-0 flex-grow">
+                                                                                <div className="text-xs font-bold text-gray-800 truncate">{user.fullName}</div>
+                                                                                <div className="text-[10px] text-gray-400 truncate">{user.headline || 'Educator'}</div>
+                                                                            </div>
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            )}
                                                             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                                                                 <EmojiPicker onEmojiSelect={(emoji) => setReplyText(prev => prev + emoji)} align="right" buttonClassName="hover:bg-gray-100 p-0.5 rounded-full" />
                                                                 <button
@@ -1433,7 +1743,7 @@ export default function UserFeedPost({
                                                                             </button>
                                                                         </form>
                                                                     ) : (
-                                                                        <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{reply.comment_text}</p>
+                                                                        <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{renderCommentText(reply.comment_text)}</p>
                                                                     )}
                                                                 </div>
 
@@ -1443,7 +1753,8 @@ export default function UserFeedPost({
                                                                         <button 
                                                                             onClick={() => {
                                                                                 setEditingCommentId(reply.id);
-                                                                                setEditingText(reply.comment_text);
+                                                                                const plainText = reply.comment_text.replace(/@\[([^\]]+)\]\(([^)]+)\)/g, '@$1');
+                                                                                setEditingText(plainText);
                                                                                 setReplyingToId(null);
                                                                             }}
                                                                             className="text-gray-300 hover:text-blue-500 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
@@ -1919,7 +2230,7 @@ export default function UserFeedPost({
                             </div>
 
                             {/* Modal Body */}
-                            <div className="p-5 flex flex-col gap-4">
+                            <div className="p-5 flex flex-col gap-4 max-h-[70vh] overflow-y-auto">
                                 <textarea
                                     ref={editPostTextareaRef}
                                     value={editedContent}
@@ -1928,6 +2239,136 @@ export default function UserFeedPost({
                                     rows={6}
                                     className="w-full border border-gray-200 rounded-xl p-3 text-xs outline-none focus:border-[var(--color-primary)] transition duration-200 resize-none leading-relaxed"
                                 />
+
+                                {/* Hidden Inputs for Uploads */}
+                                <input
+                                    type="file"
+                                    ref={editImageInputRef}
+                                    onChange={handleEditImageUpload}
+                                    accept="image/*"
+                                    multiple
+                                    className="hidden"
+                                />
+                                <input
+                                    type="file"
+                                    ref={editPdfInputRef}
+                                    onChange={handleEditPdfUpload}
+                                    accept="application/pdf"
+                                    className="hidden"
+                                />
+
+                                {/* Image Attachments Editing */}
+                                {hasImages && (
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Images (Max 5)</label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {/* Render existing images */}
+                                            {editExistingMedia.map((m) => (
+                                                <div key={m.id} className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200">
+                                                    <img src={m.file_url} alt="existing attachment" className="w-full h-full object-cover" />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveExistingImage(m.id)}
+                                                        className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600 transition"
+                                                    >
+                                                        <FaTimes size={10} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {/* Render new images */}
+                                            {editNewImagePreviews.map((preview, idx) => (
+                                                <div key={idx} className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200">
+                                                    <img src={preview} alt="new attachment" className="w-full h-full object-cover" />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveNewImage(idx)}
+                                                        className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600 transition"
+                                                    >
+                                                        <FaTimes size={10} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {/* Add button */}
+                                            {editExistingMedia.length + editNewFiles.length < 5 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => editImageInputRef.current?.click()}
+                                                    className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition"
+                                                >
+                                                    <FaPlusCircle size={16} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* PDF Attachment Editing */}
+                                {hasPdf && (
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Resource PDF</label>
+                                        
+                                        {/* Render existing resource */}
+                                        {editExistingMedia.length > 0 && (
+                                            <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-xl">
+                                                <div className="flex items-center gap-2 truncate">
+                                                    <FaFilePdf className="text-red-500 flex-shrink-0" size={16} />
+                                                    <span className="text-xs text-gray-600 truncate font-semibold">
+                                                        {editExistingMedia[0].file_name}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveExistingPdf(editExistingMedia[0].id)}
+                                                    className="text-red-500 hover:bg-red-50 p-1.5 rounded-full transition"
+                                                >
+                                                    <FaTrash size={12} />
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {/* Render new resource */}
+                                        {editNewFiles.length > 0 && (
+                                            <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-xl">
+                                                <div className="flex items-center gap-2 truncate">
+                                                    <FaFilePdf className="text-red-500 flex-shrink-0" size={16} />
+                                                    <span className="text-xs text-gray-600 truncate font-semibold">
+                                                        {editNewFiles[0].name}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleRemoveNewPdf}
+                                                    className="text-red-500 hover:bg-red-50 p-1.5 rounded-full transition"
+                                                >
+                                                    <FaTrash size={12} />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* If no media is attached, show options for both images and PDF */}
+                                {!hasImages && !hasPdf && (
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Add Attachments</label>
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => editImageInputRef.current?.click()}
+                                                className="flex-1 py-3 border border-dashed border-gray-200 hover:border-blue-500 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-gray-500 hover:text-blue-500 transition"
+                                            >
+                                                📷 Add Image
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => editPdfInputRef.current?.click()}
+                                                className="flex-1 py-3 border border-dashed border-gray-200 hover:border-red-500 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-gray-500 hover:text-red-500 transition"
+                                            >
+                                                📄 Add PDF Resource
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Modal Footer */}

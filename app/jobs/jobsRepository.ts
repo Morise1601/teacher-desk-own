@@ -505,7 +505,7 @@ export const jobsRepository = {
     },
 
     // --- JOB APPLICATIONS ---
-    getApplications: async (): Promise<Application[]> => {
+    getApplications: async (cachedJobs?: Job[]): Promise<Application[]> => {
         try {
             const { data: dbApps, error } = await supabase
                 .from('job_applications')
@@ -519,7 +519,7 @@ export const jobsRepository = {
                 const teacherIds = Array.from(new Set(dbApps.map(a => a.teacher_id).filter(Boolean)));
 
                 const [jobs, teachers] = await Promise.all([
-                    jobsRepository.getJobs(),
+                    cachedJobs || jobsRepository.getJobs(),
                     supabase.from('teachers').select('auth_id, full_name, email').in('auth_id', teacherIds)
                 ]);
 
