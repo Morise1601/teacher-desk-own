@@ -28,10 +28,12 @@ import { UserAvatar } from '@/components/ui/user-avatar';
 import { FiBookmark, FiExternalLink, FiUsers, FiMessageSquare, FiFolder } from 'react-icons/fi';
 import { FaGraduationCap, FaNewspaper, FaVideo } from 'react-icons/fa';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 const DashboardPage = () => {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const highlightPostId = searchParams.get('post');
     const [userRole, setUserRole] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [showWelcome, setShowWelcome] = useState(false);
@@ -144,7 +146,7 @@ const DashboardPage = () => {
                     {mobileTab === 'feed' && (
                         <div className="space-y-6">
                             <PostJobCreator />
-                            <UserFeed />
+                            <UserFeed highlightPostId={highlightPostId} />
                             <TopJobsList jobs={dashboardData?.topJobs} />
                             <TopProfilesList profiles={dashboardData?.topProfiles} />
                         </div>
@@ -482,7 +484,7 @@ const DashboardPage = () => {
                         <div className="block md:hidden">
                             <FeedFilters filter={feedFilter} setFilter={setFeedFilter} sortBy={feedSort} setSortBy={setFeedSort} />
                         </div>
-                        <UserFeed filter={feedFilter} sortBy={feedSort} />
+                        <UserFeed filter={feedFilter} sortBy={feedSort} highlightPostId={highlightPostId} />
                     </motion.div>
 
                     {/* --- RIGHT SECTION (Responsive: Grids dynamically on Tablets, spans list on Desktops) --- */}

@@ -9,121 +9,7 @@ import { supabase } from '@/lib/supabase';
 // Helper to determine if we are in the browser
 const isBrowser = typeof window !== 'undefined';
 
-// Initial default jobs
-const defaultJobs: Job[] = [
-    {
-        id: '1', title: 'Senior Mathematics Teacher', school: 'Delhi Public School', schoolInitial: 'DPS',
-        schoolColor: '#143c64', location: 'New Delhi', state: 'Delhi', salary: '₹45,000 – ₹65,000',
-        salaryMin: 45000, experience: '3-5 Years', subject: 'Mathematics',
-        qualification: 'M.Ed', board: 'CBSE', jobType: 'Full-time', gradeLevel: 'High School',
-        postedDate: '2 days ago', postedDaysAgo: 2, isVerified: true, isFeatured: true,
-        rating: 4.8, applicants: 38, tags: ['CBSE', 'Maths', 'Full-time'],
-        skillsRequired: ['Algebra', 'Calculus', 'Pedagogy', 'Classroom Management'],
-        description: 'Provide math lectures and lead curriculum mapping for senior grade students. Set examinations, administer grading boards, and conduct tutorial classes.',
-        requirements: 'Possess a Master degree in Mathematics or equivalent field, together with a valid B.Ed/M.Ed credential and a minimum of 3 years of classroom experience.',
-        institutionId: 'institution-session-456',
-        deadline: '2026-07-15', openPositions: 2, status: 'active',
-        createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-    },
-    {
-        id: '2', title: 'Physics Teacher (PGT)', school: 'Ryan International School', schoolInitial: 'RIS',
-        schoolColor: '#12501b', location: 'Mumbai', state: 'Maharashtra', salary: '₹40,000 – ₹55,000',
-        salaryMin: 40000, experience: '1-3 Years', subject: 'Physics',
-        qualification: 'B.Ed', board: 'ICSE', jobType: 'Full-time', gradeLevel: 'High School',
-        postedDate: '1 day ago', postedDaysAgo: 1, isVerified: true, isFeatured: false,
-        rating: 4.5, applicants: 22, tags: ['ICSE', 'Physics', 'PGT'],
-        skillsRequired: ['Thermodynamics', 'Optics', 'Laboratory Instruction', 'Curriculum Design'],
-        description: 'Deliver lectures on classical and modern mechanics, optics, and thermodynamics. Manage high-school science laboratory courses and support science fair projects.',
-        requirements: 'Degree in Physics or related sciences, B.Ed teaching license, and experience with laboratory equipment and safe class protocols.',
-        institutionId: 'institution-session-456',
-        deadline: '2026-07-10', openPositions: 1, status: 'active',
-        createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
-    },
-    {
-        id: '3', title: 'English Language Teacher', school: 'Kendriya Vidyalaya', schoolInitial: 'KV',
-        schoolColor: '#b45309', location: 'Bangalore', state: 'Karnataka', salary: '₹30,000 – ₹45,000',
-        salaryMin: 30000, experience: 'Fresher', subject: 'English',
-        qualification: 'B.Ed', board: 'CBSE', jobType: 'Full-time', gradeLevel: 'Middle School',
-        postedDate: '3 days ago', postedDaysAgo: 3, isVerified: false, isFeatured: false,
-        rating: 4.2, applicants: 56, tags: ['CBSE', 'English', 'Fresher'],
-        skillsRequired: ['Grammar', 'Creative Writing', 'Literature Coaching', 'Interpersonal Skills'],
-        description: 'Conduct interactive grammar sessions, creative writing modules, and guided literature analysis for middle school classes.',
-        requirements: 'Bachelor degree in English Literature, excellent communication fluency, B.Ed degree, and a passion for working with junior/middle school kids.',
-        institutionId: 'institution-session-456',
-        deadline: '2026-07-20', openPositions: 3, status: 'active',
-        createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
-    },
-    {
-        id: '4', title: 'Computer Science Teacher', school: 'The Heritage School', schoolInitial: 'THS',
-        schoolColor: '#7c3aed', location: 'Kolkata', state: 'West Bengal', salary: '₹35,000 – ₹50,000',
-        salaryMin: 35000, experience: '1-3 Years', subject: 'Computer Science',
-        qualification: 'B.Ed', board: 'CBSE', jobType: 'Full-time', gradeLevel: 'High School',
-        postedDate: 'Today', postedDaysAgo: 0, isVerified: true, isFeatured: true,
-        rating: 4.6, applicants: 14, tags: ['CBSE', 'CS', 'Tech'],
-        skillsRequired: ['Python', 'Java', 'Data Structures', 'Coding Mentorship'],
-        description: 'Teach object-oriented programming, basic algorithms, data structures, and computer networking. Lead code clubs and hackathon preparation groups.',
-        requirements: 'B.Tech/B.Sc in Computer Science, B.Ed or equivalent teacher training, and experience programming in Python and Java.',
-        institutionId: 'institution-session-456',
-        deadline: '2026-07-05', openPositions: 1, status: 'active',
-        createdAt: new Date().toISOString()
-    },
-    {
-        id: '5', title: 'Biology Teacher (TGT)', school: "St. Xavier's High School", schoolInitial: 'SXS',
-        schoolColor: '#dc2626', location: 'Chennai', state: 'Tamil Nadu', salary: '₹28,000 – ₹40,000',
-        salaryMin: 28000, experience: 'Fresher', subject: 'Biology',
-        qualification: 'B.Ed', board: 'State Board', jobType: 'Full-time', gradeLevel: 'Middle School',
-        postedDate: '5 days ago', postedDaysAgo: 5, isVerified: false, isFeatured: false,
-        rating: 4.0, applicants: 31, tags: ['State Board', 'Biology', 'TGT'],
-        skillsRequired: ['Botany', 'Zoology', 'Microscopy Instruction', 'Lesson Planning'],
-        description: 'Introduce students to cell biology, genetics, ecology, botany, and human anatomy. Formulate slide preparation experiments.',
-        requirements: 'Relevant undergraduate major in Biological Sciences, active B.Ed credentials, and willingness to coordinate environmental awareness committees.',
-        institutionId: 'institution-session-456',
-        deadline: '2026-07-22', openPositions: 2, status: 'active',
-        createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
-    },
-    {
-        id: '6', title: 'Montessori Primary Teacher', school: 'Little Flowers Montessori', schoolInitial: 'LFM',
-        schoolColor: '#0891b2', location: 'Pune', state: 'Maharashtra', salary: '₹22,000 – ₹32,000',
-        salaryMin: 22000, experience: 'Fresher', subject: 'General',
-        qualification: 'Montessori', board: 'State Board', jobType: 'Full-time', gradeLevel: 'Primary',
-        postedDate: '1 week ago', postedDaysAgo: 7, isVerified: true, isFeatured: false,
-        rating: 4.7, applicants: 18, tags: ['Montessori', 'Primary', 'Full-time'],
-        skillsRequired: ['Child Development', 'Montessori Method', 'Sensory Activities', 'Early Childhood Ed'],
-        description: 'Deliver child-centered early education using dedicated sensory apparatus. Support emotional growth, basic vocabulary, and socialization exercises.',
-        requirements: 'Montessori diploma/certification, early childhood training qualifications, warm interpersonal skills, and patient child coordination.',
-        institutionId: 'institution-session-456',
-        deadline: '2026-07-30', openPositions: 4, status: 'active',
-        createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-    },
-    {
-        id: '7', title: 'Chemistry Teacher (Part-time)', school: 'Amity International School', schoolInitial: 'AIS',
-        schoolColor: '#059669', location: 'Noida', state: 'Uttar Pradesh', salary: '₹20,000 – ₹30,000',
-        salaryMin: 20000, experience: '1-3 Years', subject: 'Chemistry',
-        qualification: 'M.Ed', board: 'CBSE', jobType: 'Part-time', gradeLevel: 'High School',
-        postedDate: '4 days ago', postedDaysAgo: 4, isVerified: true, isFeatured: false,
-        rating: 4.4, applicants: 9, tags: ['CBSE', 'Chemistry', 'Part-time'],
-        skillsRequired: ['Organic Chemistry', 'Stoichiometry', 'Lab Safety', 'Lesson Presentation'],
-        description: 'Part-time instruction in chemical reactions, kinetics, and lab setups. Guide safety guidelines inside chemistry labs and prepare students for CBSE board exams.',
-        requirements: 'Masters in Chemistry, valid B.Ed/M.Ed certification, strong understanding of CBSE board curricula, and part-time availability.',
-        institutionId: 'institution-session-456',
-        deadline: '2026-07-18', openPositions: 1, status: 'active',
-        createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString()
-    },
-    {
-        id: '8', title: 'Special Education Teacher', school: 'Bloom International School', schoolInitial: 'BIS',
-        schoolColor: '#e11d48', location: 'Hyderabad', state: 'Telangana', salary: '₹35,000 – ₹48,000',
-        salaryMin: 35000, experience: '3-5 Years', subject: 'Special Education',
-        qualification: 'M.Ed', board: 'CBSE', jobType: 'Full-time', gradeLevel: 'Primary',
-        postedDate: '6 days ago', postedDaysAgo: 6, isVerified: true, isFeatured: true,
-        rating: 4.9, applicants: 7, tags: ['Special Ed', 'CBSE', 'Full-time'],
-        skillsRequired: ['Individualized Education Plans (IEP)', 'Behavioral Intervention', 'Special Needs Tutoring', 'Patience'],
-        description: 'Manage specialized primary education classrooms. Author and supervise IEP documents, adapt academic resources, and lead behavioral developmental training.',
-        requirements: 'Degree in Special Education (M.Ed/B.Ed Special Ed), certification for behavioral therapy, and 3+ years experience with neurodiverse children.',
-        institutionId: 'institution-session-456',
-        deadline: '2026-07-12', openPositions: 2, status: 'active',
-        createdAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString()
-    }
-];
+// No default jobs — only real DB records are shown.
 
 const defaultTeacherSettings: TeacherSettings = {
     openToWork: true,
@@ -161,68 +47,92 @@ export const jobsRepository = {
             const { data: dbJobs, error } = await supabase
                 .from('posted_jobs')
                 .select('*')
+                .neq('status', 'paused')
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
 
             if (dbJobs && dbJobs.length > 0) {
-                // Fetch corresponding school names from institutions
-                const instIds = Array.from(new Set(dbJobs.map(j => j.institution_id).filter(Boolean)));
-                let instMap = new Map<string, string>();
-                if (instIds.length > 0) {
-                    const { data: insts } = await supabase
-                        .from('institutions')
-                        .select('auth_id, name')
-                        .in('auth_id', instIds);
-                    instMap = new Map(insts?.map(i => [i.auth_id, i.name]) || []);
-                }
-
-                // Map database columns to the frontend camelCase Job structure
-                return dbJobs.map((j: any) => {
-                    const schoolName = instMap.get(j.institution_id) || 'Ryan International School';
-                    const schoolInitial = schoolName.split(' ').map((w: string) => w[0]).join('').substring(0, 3).toUpperCase();
-                    
-                    const colors = ['#143c64', '#12501b', '#b45309', '#7c3aed', '#dc2626', '#0891b2', '#059669', '#e11d48'];
-                    const colorIndex = schoolInitial.length > 0 ? schoolInitial.charCodeAt(0) % colors.length : 0;
-
-                    return {
-                        id: j.id,
-                        title: j.title || '',
-                        school: schoolName,
-                        schoolInitial,
-                        schoolColor: colors[colorIndex],
-                        location: j.location || '',
-                        state: j.state || '',
-                        salary: j.salary_range || 'Competitive',
-                        salaryMin: j.salary_min || 0,
-                        experience: j.experience_required || 'Fresher',
-                        subject: j.subject || '',
-                        qualification: 'M.Ed', 
-                        board: j.board || 'CBSE',
-                        jobType: j.employment_type || 'Full-time',
-                        gradeLevel: j.gradeLevel || 'High School',
-                        postedDate: 'Today',
-                        postedDaysAgo: 0,
-                        isVerified: true,
-                        isFeatured: false,
-                        rating: 4.5,
-                        applicants: 0,
-                        tags: j.skills_required || [],
-                        skillsRequired: j.skills_required || [],
-                        description: j.description || '',
-                        requirements: j.requirements || '',
-                        institutionId: j.institution_id || '',
-                        deadline: j.deadline || '',
-                        openPositions: j.positions_open || 1,
-                        status: j.status || 'active',
-                        createdAt: j.created_at || new Date().toISOString()
-                    };
-                });
+                return await jobsRepository._mapDbJobs(dbJobs);
             }
-        } catch (err) {
-            console.error("Failed to load jobs from Supabase, falling back to local storage:", err);
+        } catch (err: any) {
+            console.error('Failed to load jobs from Supabase:', err?.message || err?.details || err);
         }
-        return getStorageItem<Job[]>('td_jobs_list', defaultJobs);
+        return [];
+    },
+
+    // Fetch ALL jobs for the logged-in institution (including paused/archived).
+    // Used by the institution view only — teachers always use getJobs which hides paused.
+    getInstitutionJobs: async (): Promise<Job[]> => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return [];
+
+            const { data: dbJobs, error } = await supabase
+                .from('posted_jobs')
+                .select('*')
+                .eq('institution_id', user.id)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            if (dbJobs && dbJobs.length > 0) {
+                return await jobsRepository._mapDbJobs(dbJobs);
+            }
+        } catch (err: any) {
+            console.error('Failed to load institution jobs:', err?.message || err?.details || err);
+        }
+        return [];
+    },
+
+    // Shared mapper: DB rows → frontend Job objects
+    _mapDbJobs: async (dbJobs: any[]): Promise<Job[]> => {
+        const instIds = Array.from(new Set(dbJobs.map(j => j.institution_id).filter(Boolean)));
+        let instMap = new Map<string, string>();
+        if (instIds.length > 0) {
+            const { data: insts } = await supabase
+                .from('institutions')
+                .select('auth_id, name')
+                .in('auth_id', instIds);
+            instMap = new Map(insts?.map(i => [i.auth_id, i.name]) || []);
+        }
+        const colors = ['#143c64', '#12501b', '#b45309', '#7c3aed', '#dc2626', '#0891b2', '#059669', '#e11d48'];
+        return dbJobs.map((j: any) => {
+            const schoolName = instMap.get(j.institution_id) || 'Institution';
+            const schoolInitial = schoolName.split(' ').map((w: string) => w[0]).join('').substring(0, 3).toUpperCase();
+            const colorIndex = schoolInitial.length > 0 ? schoolInitial.charCodeAt(0) % colors.length : 0;
+            return {
+                id: j.id,
+                title: j.title || '',
+                school: schoolName,
+                schoolInitial,
+                schoolColor: colors[colorIndex],
+                location: j.location || '',
+                state: j.state || '',
+                salary: j.salary_range || 'Competitive',
+                salaryMin: j.salary_min || 0,
+                experience: j.experience_required || 'Fresher',
+                subject: j.subject || '',
+                qualification: 'M.Ed',
+                board: j.board || 'CBSE',
+                jobType: j.employment_type || 'Full-time',
+                gradeLevel: j.gradeLevel || 'High School',
+                postedDate: 'Today',
+                postedDaysAgo: 0,
+                isVerified: true,
+                isFeatured: false,
+                rating: 4.5,
+                applicants: 0,
+                tags: j.skills_required || [],
+                skillsRequired: j.skills_required || [],
+                description: j.description || '',
+                requirements: j.requirements || '',
+                institutionId: j.institution_id || '',
+                deadline: j.deadline || '',
+                openPositions: j.positions_open || 1,
+                status: j.status || 'active',
+                createdAt: j.created_at || new Date().toISOString()
+            };
+        });
     },
 
     saveJobs: async (jobs: Job[]): Promise<void> => {
@@ -233,19 +143,32 @@ export const jobsRepository = {
         try {
             // Resolve active session user
             const { data: { user } } = await supabase.auth.getUser();
-            const instId = user ? user.id : jobData.institutionId;
+            if (!user) throw new Error('Not authenticated — cannot create job.');
 
-            // Fetch name from institutions if user is logged in
+            // The posted_jobs.institution_id FK references profiles.user_id.
+            // We must find the profile row whose user_id matches the logged-in auth uid.
+            const { data: profileRow, error: profileErr } = await supabase
+                .from('profiles')
+                .select('user_id')
+                .eq('user_id', user.id)
+                .maybeSingle();
+
+            if (profileErr) throw profileErr;
+            if (!profileRow) throw new Error(`No profile found for auth user ${user.id}. Cannot satisfy institution_id FK.`);
+
+            const instId = profileRow.user_id;
+
+            // Fetch institution name
             let schoolName = jobData.school;
-            if (user) {
-                const { data: inst } = await supabase
-                    .from('institutions')
-                    .select('name')
-                    .eq('auth_id', user.id)
-                    .maybeSingle();
-                if (inst?.name) schoolName = inst.name;
-            }
+            const { data: inst } = await supabase
+                .from('institutions')
+                .select('name')
+                .eq('auth_id', user.id)
+                .maybeSingle();
+            if (inst?.name) schoolName = inst.name;
 
+            // Only include columns that actually exist in posted_jobs.
+            // Columns NOT in schema: state, board — omitted intentionally.
             const dbPayload = {
                 institution_id: instId,
                 title: jobData.title,
@@ -254,14 +177,12 @@ export const jobsRepository = {
                 requirements: jobData.requirements,
                 experience_required: jobData.experience,
                 salary_range: jobData.salary,
-                salary_min: jobData.salaryMin,
+                salary_min: jobData.salaryMin || 0,
                 employment_type: jobData.jobType,
                 location: jobData.location,
-                state: jobData.state,
-                board: jobData.board,
                 deadline: jobData.deadline,
-                positions_open: jobData.openPositions,
-                skills_required: jobData.skillsRequired,
+                positions_open: jobData.openPositions || 1,
+                skills_required: jobData.skillsRequired || [],
                 status: jobData.status || 'active'
             };
 
@@ -311,8 +232,8 @@ export const jobsRepository = {
                     createdAt: newDbJob.created_at
                 };
             }
-        } catch (err) {
-            console.error("Failed to save job in Supabase, falling back to local storage:", err);
+        } catch (err: any) {
+            console.error("Failed to save job in Supabase:", err?.message || err?.details || err);
         }
 
         // Fallback to local storage
@@ -353,6 +274,9 @@ export const jobsRepository = {
 
     updateJob: async (id: string, updatedFields: Partial<Job>): Promise<Job> => {
         try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('Not authenticated.');
+
             const dbPayload: any = {};
             if (updatedFields.title !== undefined) dbPayload.title = updatedFields.title;
             if (updatedFields.subject !== undefined) dbPayload.subject = updatedFields.subject;
@@ -363,43 +287,46 @@ export const jobsRepository = {
             if (updatedFields.salaryMin !== undefined) dbPayload.salary_min = updatedFields.salaryMin;
             if (updatedFields.jobType !== undefined) dbPayload.employment_type = updatedFields.jobType;
             if (updatedFields.location !== undefined) dbPayload.location = updatedFields.location;
-            if (updatedFields.state !== undefined) dbPayload.state = updatedFields.state;
-            if (updatedFields.board !== undefined) dbPayload.board = updatedFields.board;
             if (updatedFields.deadline !== undefined) dbPayload.deadline = updatedFields.deadline;
             if (updatedFields.openPositions !== undefined) dbPayload.positions_open = updatedFields.openPositions;
             if (updatedFields.skillsRequired !== undefined) dbPayload.skills_required = updatedFields.skillsRequired;
             if (updatedFields.status !== undefined) dbPayload.status = updatedFields.status;
+            dbPayload.updated_at = new Date().toISOString();
 
+            // Chain all filters in one expression — Supabase builder is immutable.
             const { error } = await supabase
                 .from('posted_jobs')
                 .update(dbPayload)
-                .eq('id', id);
+                .eq('id', id)
+                .eq('institution_id', user.id);
 
             if (error) throw error;
-        } catch (err) {
-            console.error("Failed to update job in Supabase, falling back to local storage:", err);
-        }
 
-        const jobs = await jobsRepository.getJobs();
-        const index = jobs.findIndex(j => j.id === id);
-        if (index === -1) throw new Error('Job not found.');
-        
-        const updatedJob = { ...jobs[index], ...updatedFields, updatedAt: new Date().toISOString() };
-        jobs[index] = updatedJob;
-        await jobsRepository.saveJobs(jobs);
-        return updatedJob;
+            // Return the merged job for optimistic UI update
+            return { id, ...updatedFields } as Job;
+        } catch (err: any) {
+            console.error('Failed to update job in Supabase:', err?.message || err?.details || err);
+            throw err;
+        }
     },
 
     deleteJob: async (id: string): Promise<void> => {
         try {
-            const { error } = await supabase.from('posted_jobs').delete().eq('id', id);
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('Not authenticated.');
+
+            // Chain all filters in one expression — Supabase builder is immutable.
+            const { error } = await supabase
+                .from('posted_jobs')
+                .delete()
+                .eq('id', id)
+                .eq('institution_id', user.id);
+
             if (error) throw error;
-        } catch (err) {
-            console.error("Failed to delete job from Supabase:", err);
+        } catch (err: any) {
+            console.error('Failed to delete job from Supabase:', err?.message || err?.details || err);
+            throw err;
         }
-        const jobs = await jobsRepository.getJobs();
-        const filtered = jobs.filter(j => j.id !== id);
-        await jobsRepository.saveJobs(filtered);
     },
 
     // --- SAVED JOBS (BOOKMARKS) ---

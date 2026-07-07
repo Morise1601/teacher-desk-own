@@ -59,11 +59,12 @@ export default function AnalyticsPanel({ role, userId }: AnalyticsPanelProps) {
     const hiringSuccessRate = totalAppsSent > 0 ? Math.round((selectedCount / totalAppsSent) * 100) : 0;
 
     // Calculations - Recruiter (Institution)
-    // Assume all jobs belong to this recruiter stub for demo purposes
-    const activeJobs = jobs.filter(j => j.status === 'active').length;
-    const totalRecruiterApps = apps; // simplified scope for mock admin
-    const shortlistedApps = apps.filter(a => a.status === 'Shortlisted' || a.status === 'Interview Scheduled').length;
-    const positionsFilled = apps.filter(a => a.status === 'Selected').length;
+    const recruiterJobs = jobs.filter(j => j.institutionId === userId);
+    const activeJobs = recruiterJobs.filter(j => j.status === 'active').length;
+    const recruiterJobIds = recruiterJobs.map(j => j.id);
+    const totalRecruiterApps = apps.filter(a => recruiterJobIds.includes(a.jobId));
+    const shortlistedApps = totalRecruiterApps.filter(a => a.status === 'Shortlisted' || a.status === 'Interview Scheduled').length;
+    const positionsFilled = totalRecruiterApps.filter(a => a.status === 'Selected').length;
     const conversionRate = totalRecruiterApps.length > 0 ? Math.round((positionsFilled / totalRecruiterApps.length) * 100) : 0;
 
     if (role === 'teacher') {
