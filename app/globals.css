@@ -336,4 +336,9 @@ footer {
   }
 }
 
+/* React Toastify custom z-index override to display toasts on top of high z-index modal dialogs */
+.Toastify__toast-container {
+  z-index: 999999 !important;
+}
+
 

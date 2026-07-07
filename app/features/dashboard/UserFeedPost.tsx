@@ -261,9 +261,9 @@ export default function UserFeedPost({
     const [commentMentionResults, setCommentMentionResults] = useState<any[]>([]);
     const [selectedMentions, setSelectedMentions] = useState<Array<{ fullName: string, user_id: string }>>([]);
 
-    const handleCommentChange = async (val: string) => {
+    const handleCommentChange = async (val: string, inputEl: HTMLInputElement | null) => {
         setNewComment(val);
-        const caretPos = commentInputRef.current?.selectionStart || 0;
+        const caretPos = inputEl?.selectionStart || 0;
         const textBeforeCaret = val.substring(0, caretPos);
         const lastAtIdx = textBeforeCaret.lastIndexOf('@');
         
@@ -283,9 +283,9 @@ export default function UserFeedPost({
         }
     };
 
-    const handleReplyChange = async (val: string) => {
+    const handleReplyChange = async (val: string, inputEl: HTMLInputElement | null) => {
         setReplyText(val);
-        const caretPos = replyInputRef.current?.selectionStart || 0;
+        const caretPos = inputEl?.selectionStart || 0;
         const textBeforeCaret = val.substring(0, caretPos);
         const lastAtIdx = textBeforeCaret.lastIndexOf('@');
         
@@ -1469,7 +1469,7 @@ export default function UserFeedPost({
                                     ref={commentInputRef}
                                     type="text"
                                     value={newComment}
-                                    onChange={(e) => handleCommentChange(e.target.value)}
+                                    onChange={(e) => handleCommentChange(e.target.value, e.target)}
                                     placeholder="Add a comment... (Type @ to tag someone)"
                                     className="w-full text-xs text-gray-700 border border-gray-200 bg-gray-50 hover:bg-white focus:bg-white rounded-full pl-4 pr-20 py-2.5 outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
                                     required
@@ -1636,7 +1636,7 @@ export default function UserFeedPost({
                                                                 ref={replyInputRef}
                                                                 type="text"
                                                                 value={replyText}
-                                                                onChange={(e) => handleReplyChange(e.target.value)}
+                                                                onChange={(e) => handleReplyChange(e.target.value, e.target)}
                                                                 placeholder={`Reply to ${c.author_profile?.fullName || "Member"}... (Type @ to tag)`}
                                                                 className="w-full text-xs text-gray-700 border border-gray-200 bg-gray-50 hover:bg-white focus:bg-white rounded-full pl-3 pr-16 py-1.5 outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
                                                                 required

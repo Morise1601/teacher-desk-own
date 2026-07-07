@@ -2,6 +2,7 @@
 
 import { encryptData, decryptData } from "@/lib/crypto";
 import { supabase, supabaseAdmin } from "@/lib/supabase";
+import { randomUUID } from 'crypto';
 
 /**
  * Helper to validate image file size and format.
@@ -431,6 +432,49 @@ export async function commentPostAction(encryptedPayload: string) {
     if (commentText.length > 500) {
       throw new Error("Comment text exceeds 500 character limit.");
     }
+    // Ensure the commenter exists in the 'teachers' table to satisfy legacy DB triggers.
+    // Legacy DB triggers on 'post_comments' query 'teachers' for name to build notifications.
+    try {
+      const { data: existingTeacher } = await supabaseAdmin
+        .from('teachers')
+        .select('id')
+        .eq('auth_id', userId)
+        .maybeSingle();
+
+      if (!existingTeacher) {
+        let commenterName = "Member";
+        let commenterEmail = `${userId}@teacherdesk.placeholder`;
+
+        const { data: instData } = await supabaseAdmin
+          .from('institutions')
+          .select('name, email')
+          .eq('auth_id', userId)
+          .maybeSingle();
+
+        if (instData) {
+          if (instData.name) commenterName = instData.name;
+          if (instData.email) commenterEmail = instData.email;
+        }
+
+        await supabaseAdmin
+          .from('teachers')
+          .insert([{
+            id: randomUUID(),
+            created_at: new Date().toISOString(),
+            full_name: commenterName,
+            email: commenterEmail,
+            phone: "0000000000",
+            gender: "other",
+            dob: "1970-01-01",
+            qualification: "None",
+            specialization: "None",
+            experience: "0",
+            auth_id: userId
+          }]);
+      }
+    } catch (teachErr: any) {
+      console.error("⚠️ [SHADOW TEACHER INSERT ERROR]:", teachErr.message);
+    }
 
     const { data: comment, error } = await supabaseAdmin
       .from('post_comments')
@@ -458,24 +502,28 @@ export async function commentPostAction(encryptedPayload: string) {
       .from('teachers')
       .select('full_name')
       .eq('auth_id', userId)
-      .single();
+      .maybeSingle();
     
-    if (teacherData) {
+    if (teacherData && teacherData.full_name) {
       fullName = teacherData.full_name;
     } else {
       const { data: instData } = await supabaseAdmin
         .from('institutions')
         .select('name')
         .eq('auth_id', userId)
-        .single();
-      if (instData) fullName = instData.name;
+        .maybeSingle();
+      if (instData && instData.name) {
+        fullName = instData.name;
+      }
     }
+
+    const finalFullName = fullName || "Member";
 
     const commentWithAuthor = {
       ...comment,
       author_profile: {
         ...comment.author_profile,
-        fullName
+        fullName: finalFullName
       }
     };
 
@@ -495,7 +543,7 @@ export async function commentPostAction(encryptedPayload: string) {
           .insert([{
             user_id: taggedUserId,
             title: "Mentioned in comment",
-            message: `${fullName} mentioned you in a comment.`,
+            message: `${finalFullName} mentioned you in a comment.`,
             type: "mention",
             action_url: `/dashboard?post=${postId}`,
             is_read: false
@@ -1172,7 +1220,7 @@ export async function updatePostAction(encryptedPayload: string) {
         .select('id')
         .eq('post_id', postId);
       if (existingMedia && existingMedia.length > 0) {
-        mediaIdsToDelete = existingMedia.map(m => m.id);
+        mediaIdsToDelete = existingMedia.map((m: any) => m.id);
       }
     } else if (deletedMediaIds && deletedMediaIds.length > 0) {
       mediaIdsToDelete = deletedMediaIds;
@@ -1327,6 +1375,93 @@ export async function updatePostAction(encryptedPayload: string) {
     return encryptData({ success: true });
   } catch (err: any) {
     console.error("❌ [UPDATE POST ACTION ERROR]:", err.message);
+    return encryptData({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Fetches a single post by its ID.
+ */
+export async function getPostAction(encryptedPayload: string) {
+  try {
+    const { postId } = decryptData(encryptedPayload);
+    if (!postId) throw new Error("Post ID is required.");
+
+    // Fetch the post from posts table
+    const { data: post, error } = await supabaseAdmin
+      .from('posts')
+      .select(`
+        *,
+        author_profile:profiles!user_id (
+          user_id,
+          profile_pic_url,
+          headline,
+          role
+        )
+      `)
+      .eq('id', postId)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!post) throw new Error("Post not found.");
+
+    // Resolve author name
+    let fullName = "Member";
+    const { data: teacherData } = await supabaseAdmin
+      .from('teachers')
+      .select('full_name')
+      .eq('auth_id', post.user_id)
+      .maybeSingle();
+
+    if (teacherData && teacherData.full_name) {
+      fullName = teacherData.full_name;
+    } else {
+      const { data: instData } = await supabaseAdmin
+        .from('institutions')
+        .select('name')
+        .eq('auth_id', post.user_id)
+        .maybeSingle();
+      if (instData && instData.name) {
+        fullName = instData.name;
+      }
+    }
+    
+    post.author_profile = {
+      ...post.author_profile,
+      fullName
+    };
+
+    // Fetch media
+    const { data: media } = await supabaseAdmin
+      .from('post_media')
+      .select('*')
+      .eq('post_id', postId);
+    post.media = media || [];
+
+    // Fetch poll if applicable
+    if (post.post_type === 'poll') {
+      const { data: poll } = await supabaseAdmin
+        .from('post_polls')
+        .select('*')
+        .eq('post_id', postId)
+        .maybeSingle();
+
+      if (poll) {
+        const { data: options } = await supabaseAdmin
+          .from('poll_options')
+          .select('*')
+          .eq('poll_id', poll.id);
+        
+        poll.options = options || [];
+        post.poll = poll;
+      }
+    } else {
+      post.poll = null;
+    }
+
+    return encryptData({ success: true, data: post });
+  } catch (err: any) {
+    console.error("❌ [GET POST ERROR]:", err.message);
     return encryptData({ success: false, message: err.message });
   }
 }

@@ -251,6 +251,7 @@ export default function JobsPage() {
     // View state
     const [viewMode, setViewMode] = useState<'teacher' | 'institution'>('teacher');
     const [jobs, setJobs] = useState<Job[]>([]);
+    const [institutionJobsList, setInstitutionJobsList] = useState<Job[]>([]);
     const [applications, setApplications] = useState<Application[]>([]);
     const [savedJobIds, setSavedJobIds] = useState<string[]>([]);
     const [teacherSettings, setTeacherSettings] = useState<TeacherSettings | null>(null);
@@ -266,6 +267,13 @@ export default function JobsPage() {
     const [applyingJob, setApplyingJob] = useState<Job | null>(null);
     const [jobToDelete, setJobToDelete] = useState<string | null>(null);
     const [isDeletingJob, setIsDeletingJob] = useState(false);
+    const [authUserId, setAuthUserId] = useState<string | null>(null);
+    const [jobToPause, setJobToPause] = useState<Job | null>(null);
+    const [isPausingJob, setIsPausingJob] = useState(false);
+
+    // Derived session context IDs
+    const activeTeacherId = authUserId || DUMMY_TEACHER_ID;
+    const activeInstitutionId = authUserId || DUMMY_INSTITUTION_ID;
     
     // Slideable Job Details Modal states
     const [selectedJobIndex, setSelectedJobIndex] = useState<number | null>(null);
@@ -299,17 +307,27 @@ export default function JobsPage() {
 
     const loadData = async (cachedJobs?: Job[]) => {
         try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const teacherId = user ? user.id : DUMMY_TEACHER_ID;
+            const institutionId = user ? user.id : DUMMY_INSTITUTION_ID;
+
+            // Teacher view: only active (non-paused) jobs
             const allJobs = cachedJobs || await jobsRepository.getJobs();
             if (!cachedJobs) setJobs(allJobs);
+
+            // Institution view: all their own jobs including paused/archived
+            const instJobs = await jobsRepository.getInstitutionJobs();
+            setInstitutionJobsList(instJobs);
+
             const allApps = await jobsRepository.getApplications(allJobs);
             setApplications(allApps);
-            const savedList = await jobsRepository.getSavedJobsList(DUMMY_TEACHER_ID);
+            const savedList = await jobsRepository.getSavedJobsList(teacherId);
             setSavedJobIds(savedList);
-            const tSettings = await jobsRepository.getTeacherSettings(DUMMY_TEACHER_ID);
+            const tSettings = await jobsRepository.getTeacherSettings(teacherId);
             setTeacherSettings(tSettings);
-            const instSettings = await jobsRepository.getInstitutionSettings(DUMMY_INSTITUTION_ID);
+            const instSettings = await jobsRepository.getInstitutionSettings(institutionId);
             setInstitutionSettings(instSettings);
-            const resume = await jobsRepository.getResume(DUMMY_TEACHER_ID);
+            const resume = await jobsRepository.getResume(teacherId);
             setResumeData(resume);
         } catch (err) {
             console.error('Failed to load repository data', err);
@@ -323,6 +341,7 @@ export default function JobsPage() {
             try {
                 const { data: { user } } = await supabase.auth.getUser();
                 if (user && isMounted) {
+                    setAuthUserId(user.id);
                     let role = user.user_metadata?.role;
                     if (!role) {
                         const enc = await getUserRoleAction(user.id);
@@ -416,7 +435,7 @@ export default function JobsPage() {
         if (activeTab === 'saved') {
             list = list.filter(j => savedJobIds.includes(j.id));
         } else if (activeTab === 'applied') {
-            const appliedIds = applications.filter(a => a.teacherId === DUMMY_TEACHER_ID).map(a => a.jobId);
+            const appliedIds = applications.filter(a => a.teacherId === activeTeacherId).map(a => a.jobId);
             list = list.filter(j => appliedIds.includes(j.id));
         } else if (activeTab === 'recommended') {
             // Sort by match score
@@ -461,9 +480,16 @@ export default function JobsPage() {
         return list;
     }, [jobs, activeTab, savedJobIds, applications, searchQuery, locationQuery, filterSubject, filterBoard, filterExp, filterType, filterGrade, filterSalary, teacherSettings]);
 
-    // Recruiter: Filter applicants
+    // Institution view: show ALL of their own jobs (active + paused + archived)
+    const institutionJobs = useMemo(() => {
+        return institutionJobsList;
+    }, [institutionJobsList]);
+
     const filteredApplicants = useMemo(() => {
-        let list = applications;
+        let list = applications.filter(app => {
+            const job = institutionJobsList.find(j => j.id === app.jobId);
+            return !!job; // job belongs to this institution
+        });
 
         if (applicantStatusFilter !== 'All Statuses') {
             list = list.filter(a => a.status === applicantStatusFilter);
@@ -479,13 +505,13 @@ export default function JobsPage() {
         }
 
         return list;
-    }, [applications, applicantStatusFilter, applicantExpFilter, applicantSubjectFilter, jobs]);
+    }, [applications, applicantStatusFilter, applicantExpFilter, applicantSubjectFilter, institutionJobsList]);
 
     // --- Action Handlers ---
 
     const handleToggleSave = async (id: string) => {
         try {
-            const isSaved = await jobsRepository.toggleSaveJob(DUMMY_TEACHER_ID, id);
+            const isSaved = await jobsRepository.toggleSaveJob(activeTeacherId, id);
             setSavedJobIds(prev => isSaved ? [...prev, id] : prev.filter(item => item !== id));
             toast.success(isSaved ? 'Job saved to bookmarks.' : 'Job removed from bookmarks.');
             window.dispatchEvent(new CustomEvent('jobs:updated'));
@@ -496,65 +522,56 @@ export default function JobsPage() {
     };
 
     const handleApplyClick = (job: Job) => {
-        if (!resumeData) {
-            toast.warn('Please upload a professional resume before applying.');
-            return;
-        }
         setApplyingJob(job);
         setCoverLetterInput('');
     };
 
     const handleConfirmApply = async () => {
         if (!applyingJob) return;
-
         try {
             await jobsRepository.applyJob({
                 jobId: applyingJob.id,
-                teacherId: DUMMY_TEACHER_ID,
-                teacherName: 'Jessica Taylor', // Mock Teacher Profile details
+                teacherId: activeTeacherId,
+                teacherName: 'Jessica Taylor',
                 teacherEmail: 'jessica.taylor@teacherdesk.com',
-                coverLetter: coverLetterInput.trim() || undefined
+                coverLetter: coverLetterInput
             });
-
-            toast.success(`Application sent successfully for: ${applyingJob.title}`);
-            setApplyingJob(null);
-
-            // Dispatch a reload event to update any listening widgets
+            toast.success('Application submitted successfully!');
             window.dispatchEvent(new CustomEvent('jobs:updated'));
             await loadData();
         } catch (err: any) {
-            toast.error(err.message || 'Application submission failed.');
+            toast.error(err.message || 'Failed to submit application.');
+        } finally {
+            setApplyingJob(null);
         }
     };
 
     const handleTeacherSettingsUpdate = async (fields: Partial<TeacherSettings>) => {
         try {
-            const updated = await jobsRepository.saveTeacherSettings(DUMMY_TEACHER_ID, fields);
+            const updated = await jobsRepository.saveTeacherSettings(activeTeacherId, fields);
             setTeacherSettings(updated);
-            toast.success('Availability settings updated.');
+            toast.success('Hiring preferences updated.');
             window.dispatchEvent(new CustomEvent('jobs:updated'));
             await loadData();
         } catch (err) {
-            toast.error('Failed to update availability.');
+            toast.error('Failed to save preferences.');
         }
     };
 
     const handleInstitutionHiringUpdate = async (status: InstitutionSettings['hiringStatus']) => {
         try {
-            const updated = await jobsRepository.saveInstitutionSettings(DUMMY_INSTITUTION_ID, { hiringStatus: status });
+            const updated = await jobsRepository.saveInstitutionSettings(activeInstitutionId, { hiringStatus: status });
             setInstitutionSettings(updated);
-            toast.success(`Hiring status updated to: ${status}`);
-
-            // Notify active followers (simulation)
+            toast.success('Recruitment settings updated.');
+            
             if (status === 'Actively Hiring') {
                 const activeJobsCount = jobs.filter(j => j.status === 'active').length;
-                await jobsRepository.addNotification(DUMMY_TEACHER_ID, {
+                await jobsRepository.addNotification(activeTeacherId, {
                     title: 'Ryan International is hiring!',
                     message: `Ryan International School updated status to Actively Hiring. They have ${activeJobsCount} positions open.`,
                     type: 'new_match'
                 });
             }
-
             window.dispatchEvent(new CustomEvent('jobs:updated'));
             await loadData();
         } catch (err) {
@@ -568,9 +585,11 @@ export default function JobsPage() {
 
     const executeDeleteJob = async () => {
         if (!jobToDelete) return;
+        const targetId = jobToDelete;
+        setJobToDelete(null);
         setIsDeletingJob(true);
         try {
-            await jobsRepository.deleteJob(jobToDelete);
+            await jobsRepository.deleteJob(targetId);
             toast.success('Job listing deleted.');
             window.dispatchEvent(new CustomEvent('jobs:updated'));
             await loadData();
@@ -578,7 +597,28 @@ export default function JobsPage() {
             toast.error('Failed to delete listing.');
         } finally {
             setIsDeletingJob(false);
-            setJobToDelete(null);
+        }
+    };
+
+    const handlePauseJob = (job: Job) => {
+        setJobToPause(job);
+    };
+
+    const executePauseJob = async () => {
+        if (!jobToPause) return;
+        const targetJob = jobToPause;
+        setJobToPause(null);
+        setIsPausingJob(true);
+        try {
+            const newStatus = targetJob.status === 'paused' ? 'active' : 'paused';
+            await jobsRepository.updateJob(targetJob.id, { status: newStatus });
+            toast.success(`Listing status set to: ${newStatus}`);
+            window.dispatchEvent(new CustomEvent('jobs:updated'));
+            await loadData();
+        } catch (err) {
+            toast.error('Failed to update status.');
+        } finally {
+            setIsPausingJob(false);
         }
     };
 
@@ -610,18 +650,6 @@ export default function JobsPage() {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [selectedJobIndex, filteredJobs.length]);
-
-    const handlePauseJob = async (job: Job) => {
-        try {
-            const newStatus = job.status === 'paused' ? 'active' : 'paused';
-            await jobsRepository.updateJob(job.id, { status: newStatus });
-            toast.success(`Listing status set to: ${newStatus}`);
-            window.dispatchEvent(new CustomEvent('jobs:updated'));
-            await loadData();
-        } catch (err) {
-            toast.error('Failed to update status.');
-        }
-    };
 
     // Calculate match score for list view
     function calculateMatchScore(job: Job, settings: TeacherSettings) {
@@ -830,7 +858,7 @@ export default function JobsPage() {
                         <aside className="hidden xl:flex flex-col gap-5 sticky top-24 self-start max-h-[calc(100vh-10rem)] sidebar-scroll pr-1 rounded-lg">
                             {/* Resume Upload card */}
                             <ResumeUpload 
-                                teacherId={DUMMY_TEACHER_ID} 
+                                teacherId={activeTeacherId} 
                                 onResumeChange={loadData} 
                                 showPreview={showResumePreview} 
                                 onPreviewClick={() => setShowResumePreview(!showResumePreview)} 
@@ -1009,7 +1037,7 @@ export default function JobsPage() {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 {filteredJobs.map((job, idx) => {
                                     const isSaved = savedJobIds.includes(job.id);
-                                    const hasApplied = applications.some(a => a.jobId === job.id && a.teacherId === DUMMY_TEACHER_ID);
+                                    const hasApplied = applications.some(a => a.jobId === job.id && a.teacherId === activeTeacherId);
                                     const matchRating = teacherSettings ? calculateMatchScore(job, teacherSettings).score : null;
 
                                     return (
@@ -1047,7 +1075,7 @@ export default function JobsPage() {
                                 const completePercent = teacherSettings?.openToWork ? baseScore + 20 : baseScore;
 
                                 const profileSteps = [
-                                    { label: 'Basic Info Completed', done: !!DUMMY_TEACHER_ID },
+                                    { label: 'Basic Info Completed', done: !!activeTeacherId },
                                     { label: 'Resume Uploaded', done: !!resumeData },
                                     { label: 'Hiring Settings preference', done: !!teacherSettings },
                                     { label: 'Open to Work status', done: !!teacherSettings?.openToWork },
@@ -1232,7 +1260,7 @@ export default function JobsPage() {
                     <div className="flex flex-col gap-6">
 
                         {/* Analytics summary counter */}
-                        <AnalyticsPanel role="institution" userId={DUMMY_INSTITUTION_ID} />
+                        <AnalyticsPanel role="institution" userId={activeInstitutionId} />
 
                         {/* Recruiter Tabs row */}
                         <div className="flex items-center justify-between border-b border-gray-200 pb-2.5 flex-wrap gap-4">
@@ -1242,14 +1270,14 @@ export default function JobsPage() {
                                     className={`text-xs font-bold px-4 py-2.5 transition ${instTab === 'active-postings' ? 'bg-[var(--color-secondary)] text-white' : 'text-gray-600 hover:bg-slate-50'
                                         }`}
                                 >
-                                    Active Job Postings ({jobs.length})
+                                    Active Job Postings ({institutionJobs.length})
                                 </button>
                                 <button
                                     onClick={() => setInstTab('applicants')}
                                     className={`text-xs font-bold px-4 py-2.5 transition ${instTab === 'applicants' ? 'bg-[var(--color-secondary)] text-white' : 'text-gray-600 hover:bg-slate-50'
                                         }`}
                                 >
-                                    Applicant Tracking ({applications.length})
+                                    Applicant Tracking ({filteredApplicants.length})
                                 </button>
                                 <button
                                     onClick={() => setInstTab('hiring-settings')}
@@ -1288,7 +1316,7 @@ export default function JobsPage() {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100 font-medium">
-                                            {jobs.map(job => (
+                                            {institutionJobs.map(job => (
                                                 <tr key={job.id} className="hover:bg-slate-50/50">
                                                     <td className="p-3.5 font-bold text-gray-800">{job.title}</td>
                                                     <td className="p-3.5 text-gray-600">{job.subject}</td>
@@ -1324,7 +1352,7 @@ export default function JobsPage() {
                                                     </td>
                                                 </tr>
                                             ))}
-                                            {jobs.length === 0 && (
+                                            {institutionJobs.length === 0 && (
                                                 <tr>
                                                     <td colSpan={8} className="p-8 text-center text-gray-400">No jobs posted yet. Click &ldquo;Post a Job&rdquo; to begin recruiting.</td>
                                                 </tr>
@@ -1540,6 +1568,7 @@ export default function JobsPage() {
                 editingJob={editingJob}
                 onClose={() => { setShowJobCreator(false); setEditingJob(null); }}
                 onJobCreated={loadData}
+                institutionId={activeInstitutionId}
             />
 
             {/* Recruiter Review modal */}
@@ -1622,7 +1651,7 @@ export default function JobsPage() {
                 (() => {
                     const activeJob = filteredJobs[selectedJobIndex];
                     const isSaved = savedJobIds.includes(activeJob.id);
-                    const hasApplied = applications.some(a => a.jobId === activeJob.id && a.teacherId === DUMMY_TEACHER_ID);
+                    const hasApplied = applications.some(a => a.jobId === activeJob.id && a.teacherId === activeTeacherId);
                     const matchRating = teacherSettings ? calculateMatchScore(activeJob, teacherSettings).score : null;
                     
                     const schoolInitial = activeJob.schoolInitial || activeJob.school.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
@@ -1926,6 +1955,21 @@ export default function JobsPage() {
                 cancelText="Cancel"
                 type="danger"
                 isLoading={isDeletingJob}
+            />
+
+            <ConfirmDialog
+                isOpen={jobToPause !== null}
+                onClose={() => setJobToPause(null)}
+                onConfirm={executePauseJob}
+                title={jobToPause?.status === 'paused' ? 'Resume Job Listing' : 'Pause Job Listing'}
+                message={jobToPause?.status === 'paused' 
+                    ? 'Are you sure you want to resume this job listing? It will become visible to teachers again.' 
+                    : 'Are you sure you want to pause this job listing? It will be hidden from teachers.'
+                }
+                confirmText={jobToPause?.status === 'paused' ? 'Resume' : 'Pause'}
+                cancelText="Cancel"
+                type="warning"
+                isLoading={isPausingJob}
             />
 
         </div>

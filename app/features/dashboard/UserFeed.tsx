@@ -3,7 +3,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import UserFeedPost from './UserFeedPost';
-import { getFeedAction } from '@/app/actions/posts';
+import { getFeedAction, getPostAction } from '@/app/actions/posts';
 import { decryptData, encryptData } from '@/lib/crypto';
 import { supabase } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -14,9 +14,10 @@ import { FeedFilterType, FeedSortType } from './FeedFilters';
 interface UserFeedProps {
     filter?: FeedFilterType;
     sortBy?: FeedSortType;
+    highlightPostId?: string | null;
 }
 
-export default function UserFeed({ filter = 'all', sortBy = 'latest' }: UserFeedProps) {
+export default function UserFeed({ filter = 'all', sortBy = 'latest', highlightPostId = null }: UserFeedProps) {
     const [posts, setPosts] = useState<any[]>([]);
     const [userId, setUserId] = useState<string | null>(null);
 
@@ -63,7 +64,20 @@ export default function UserFeed({ filter = 'all', sortBy = 'latest' }: UserFeed
             const res = decryptData(await getFeedAction(payload));
 
             if (res.success && res.data) {
-                const fetchedPosts = res.data;
+                let fetchedPosts = res.data;
+
+                // If a specific post needs to be highlighted and is not in the current feed segment, fetch and prepend it
+                if (isInitial && highlightPostId && !fetchedPosts.some((p: any) => p.id === highlightPostId)) {
+                    try {
+                        const postRes = decryptData(await getPostAction(encryptData({ postId: highlightPostId })));
+                        if (postRes.success && postRes.data) {
+                            fetchedPosts = [postRes.data, ...fetchedPosts];
+                        }
+                    } catch (err) {
+                        console.error("Error loading highlighted post:", err);
+                    }
+                }
+
                 if (isInitial) {
                     setPosts(fetchedPosts);
                 } else {
@@ -86,14 +100,14 @@ export default function UserFeed({ filter = 'all', sortBy = 'latest' }: UserFeed
             setIsLoading(false);
             setLoadingMore(false);
         }
-    }, [userId, cursor, filter, sortBy]);
+    }, [userId, cursor, filter, sortBy, highlightPostId]);
 
-    // Reload feed when user changes filters or sorting
+    // Reload feed when user changes filters, sorting, or highlightPostId
     useEffect(() => {
         if (userId) {
             loadFeed(true, filter, sortBy);
         }
-    }, [userId, filter, sortBy]);
+    }, [userId, filter, sortBy, highlightPostId]);
 
     // Handle reload event (e.g. from PostJobCreator on new post)
     useEffect(() => {

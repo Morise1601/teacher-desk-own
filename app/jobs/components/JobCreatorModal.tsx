@@ -24,9 +24,10 @@ interface JobCreatorModalProps {
     onClose: () => void;
     onJobCreated: () => void;
     editingJob?: Job | null;
+    institutionId: string;
 }
 
-export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editingJob }: JobCreatorModalProps) {
+export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editingJob, institutionId }: JobCreatorModalProps) {
     const [title, setTitle] = useState('');
     const [subject, setSubject] = useState('Mathematics');
     const [description, setDescription] = useState('');
@@ -166,7 +167,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                 status: 'active' as const,
                 tags,
                 qualification: subject === 'General' || subject === 'Special Education' ? 'B.Ed' : 'M.Ed',
-                institutionId: 'institution-session-456' // UPDATED to use correct active recruiter session ID
+                institutionId: institutionId
             };
 
             if (editingJob) {
