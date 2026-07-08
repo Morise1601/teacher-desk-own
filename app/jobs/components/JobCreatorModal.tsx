@@ -9,6 +9,9 @@ import { Job } from '../types';
 import { jobsRepository } from '../jobsRepository';
 import { toast } from 'react-toastify';
 import dynamic from 'next/dynamic';
+import { getInstitutionProfileAction } from '@/app/actions/institution';
+import { decryptData } from '@/lib/crypto';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 const MapPicker = dynamic(() => import('@/components/maps/MapPicker'), {
     ssr: false,
@@ -46,6 +49,95 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
     const [isFeatured, setIsFeatured] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showMapPicker, setShowMapPicker] = useState(false);
+    const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+    const [institutionAddress, setInstitutionAddress] = useState('');
+    const [institutionName, setInstitutionName] = useState('');
+
+    const parseCityState = (fullAddress: string, instName?: string) => {
+        if (!fullAddress) return { city: '', state: '' };
+        
+        let parts = fullAddress.split(',').map(p => p.trim()).filter(Boolean);
+        
+        // 1. Remove country if it is the last element
+        if (parts.length > 0 && parts[parts.length - 1].toLowerCase() === 'india') {
+            parts.pop();
+        }
+        
+        // 2. Remove institution name and its acronym from the address parts to avoid showing them in City
+        const targetName = instName || institutionName || editingJob?.school || '';
+        if (targetName) {
+            const lowerName = targetName.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+            const acronym = lowerName.split(' ').map(w => w[0]).join('');
+            
+            parts = parts.filter(p => {
+                const lp = p.toLowerCase();
+                // Match exact acronym, standard dummy, or matching substring
+                if (lp === acronym || lp === 'smvec' || lp.includes('ryan international') || lp.includes('school')) return false;
+                if (lp.includes(lowerName) || lowerName.includes(lp)) return false;
+                if (acronym && acronym.length >= 2 && lp.includes(acronym)) return false;
+                return true;
+            });
+        }
+        
+        let city = '';
+        let state = '';
+        
+        if (parts.length >= 2) {
+            const statePart = parts[parts.length - 1];
+            const cityPart = parts[parts.length - 2];
+            
+            state = statePart.replace(/\d+/g, '').trim();
+            city = cityPart.replace(/\d+/g, '').trim();
+        } else if (parts.length === 1) {
+            const cleanPart = parts[0].replace(/\d+/g, '').trim();
+            city = cleanPart;
+            state = cleanPart;
+        }
+        
+        return { city, state };
+    };
+
+    useEffect(() => {
+        if (isOpen && institutionId) {
+            const fetchInstitutionAddress = async () => {
+                let addr = '';
+                let name = '';
+                try {
+                    const encryptedResponse = await getInstitutionProfileAction(institutionId);
+                    const response = decryptData(encryptedResponse);
+                    if (response && response.success && response.data) {
+                        const instData = response.data;
+                        addr = instData.address || instData.location || '';
+                        name = instData.name || '';
+                    }
+                } catch (error) {
+                    console.error("Failed to load institution address:", error);
+                }
+
+                // Fallback for dummy/mock or empty address
+                if (!addr) {
+                    addr = "Ryan International School, Sector C, Vasant Kunj, New Delhi, Delhi, India";
+                    name = "Ryan International School";
+                }
+
+                setInstitutionAddress(addr);
+                setInstitutionName(name);
+                
+                // Default location and state based on address if not editing
+                if (!editingJob) {
+                    const defaultAddress = name && addr ? `${name}, ${addr}` : (addr || "Ryan International School, Sector C, Vasant Kunj, New Delhi, Delhi, India");
+                    setLocation(defaultAddress);
+                    const parsed = parseCityState(addr, name);
+                    if (parsed.state) setState(parsed.state);
+                }
+            };
+            fetchInstitutionAddress();
+        }
+    }, [isOpen, institutionId, editingJob]);
+
+    const handleOpenMapWithConfirm = () => {
+        setShowConfirmDialog(true);
+    };
 
     // If editing, load the job details
     useEffect(() => {
@@ -55,12 +147,12 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
             setDescription(editingJob.description || '');
             setRequirements(editingJob.requirements || '');
             setExperience(editingJob.experience);
-            
+
             // Extract salary min and max if formatting matches
             setSalaryMin(editingJob.salaryMin || 30000);
             const maxVal = editingJob.salary.split('–').pop()?.replace(/[^0-9]/g, '');
             setSalaryMax(maxVal ? parseInt(maxVal, 10) : 50000);
-            
+
             setEmploymentType(editingJob.jobType);
             setLocation(editingJob.location);
             setState(editingJob.state);
@@ -84,12 +176,12 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
             setState('');
             setBoard('CBSE');
             setGradeLevel('High School');
-            
+
             // Set default deadline (30 days from now)
             const futureDate = new Date();
             futureDate.setDate(futureDate.getDate() + 30);
             setDeadline(futureDate.toISOString().split('T')[0]);
-            
+
             setOpenPositions(1);
             setSkillsText('');
             setIsFeatured(false);
@@ -100,9 +192,9 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        
+
         // --- Form Validations ---
-        if (!title.trim() || !location.trim() || !state.trim() || !description.trim() || !requirements.trim()) {
+        if (!title.trim() || !location.trim() || !description.trim() || !requirements.trim()) {
             toast.error('Please fill in all mandatory fields.');
             return;
         }
@@ -193,7 +285,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
-            <motion.div 
+            <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 15 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 15 }}
@@ -212,7 +304,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                             <p className="text-[10px] text-gray-400 font-medium">Configure roles to find the best educators.</p>
                         </div>
                     </div>
-                    <button 
+                    <button
                         onClick={onClose}
                         className="text-gray-400 hover:text-gray-600 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
                     >
@@ -226,7 +318,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="flex flex-col gap-1">
                             <label className="text-xs font-bold text-gray-700">Job Title <span className="text-red-500">*</span></label>
-                            <input 
+                            <input
                                 type="text"
                                 value={title}
                                 onChange={e => setTitle(e.target.value)}
@@ -238,7 +330,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
 
                         <div className="flex flex-col gap-1">
                             <label className="text-xs font-bold text-gray-700">Subject Expertise <span className="text-red-500">*</span></label>
-                            <select 
+                            <select
                                 value={subject}
                                 onChange={e => setSubject(e.target.value)}
                                 className="w-full text-xs border border-gray-200 rounded-lg p-2.5 outline-none bg-white focus:border-[var(--color-primary)] transition"
@@ -254,7 +346,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div className="flex flex-col gap-1">
                             <label className="text-xs font-bold text-gray-700">Board Type <span className="text-red-500">*</span></label>
-                            <select 
+                            <select
                                 value={board}
                                 onChange={e => setBoard(e.target.value)}
                                 className="w-full text-xs border border-gray-200 rounded-lg p-2.5 outline-none bg-white"
@@ -267,7 +359,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
 
                         <div className="flex flex-col gap-1">
                             <label className="text-xs font-bold text-gray-700">Grade Level <span className="text-red-500">*</span></label>
-                            <select 
+                            <select
                                 value={gradeLevel}
                                 onChange={e => setGradeLevel(e.target.value)}
                                 className="w-full text-xs border border-gray-200 rounded-lg p-2.5 outline-none bg-white"
@@ -280,7 +372,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
 
                         <div className="flex flex-col gap-1">
                             <label className="text-xs font-bold text-gray-700">Employment Type <span className="text-red-500">*</span></label>
-                            <select 
+                            <select
                                 value={employmentType}
                                 onChange={e => setEmploymentType(e.target.value)}
                                 className="w-full text-xs border border-gray-200 rounded-lg p-2.5 outline-none bg-white"
@@ -292,16 +384,27 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                         </div>
                     </div>
 
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs font-bold text-gray-700">Job Address / Location <span className="text-red-500">*</span></label>
+                        <textarea
+                            value={location}
+                            onChange={e => setLocation(e.target.value)}
+                            placeholder="e.g. Ryan International School, Sector C, Vasant Kunj, New Delhi, Delhi, India"
+                            rows={2}
+                            className="w-full text-xs border border-gray-200 rounded-lg p-2.5 outline-none bg-white focus:border-[var(--color-primary)] transition-all resize-none leading-relaxed"
+                            required
+                        />
+                    </div>
+
                     {/* Location Row */}
                     <div className="flex flex-col gap-2 mt-2.5 mb-1">
                         <label className="text-xs font-bold text-gray-700 flex items-center justify-between">
-                            <span>Job Location</span>
-                            <span className="text-2xs font-semibold text-gray-400 uppercase tracking-widest">Pinpoint on Map</span>
+                            <span>Pinpoint on Map</span>
                         </label>
-                        
+
                         <button
                             type="button"
-                            onClick={() => setShowMapPicker(true)}
+                            onClick={handleOpenMapWithConfirm}
                             className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50/65 to-indigo-50/65 hover:from-blue-50 hover:to-indigo-50 border border-blue-100/70 hover:border-blue-300 rounded-xl transition-all duration-200 group text-left shadow-sm"
                         >
                             <div className="flex items-center gap-3">
@@ -310,41 +413,13 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                                 </div>
                                 <div>
                                     <h4 className="text-xs font-bold text-slate-800">Pinpoint Location on Map</h4>
-                                    <p className="text-[10px] text-slate-500 font-medium">Auto-fill city & state from interactive map picker</p>
+                                    <p className="text-[10px] text-slate-500 font-medium">Select institution and get complete address details</p>
                                 </div>
                             </div>
                             <span className="text-[9px] font-bold text-blue-600 bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-blue-100/50 group-hover:bg-blue-600 group-hover:text-white transition-all uppercase tracking-wider">
                                 Open Map
                             </span>
                         </button>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="flex flex-col gap-1">
-                            <label className="text-xs font-bold text-gray-700 flex items-center gap-1">
-                                City <span className="text-red-500">*</span>
-                            </label>
-                            <input 
-                                type="text"
-                                value={location}
-                                onChange={e => setLocation(e.target.value)}
-                                placeholder="e.g. New Delhi"
-                                className="w-full text-xs border border-gray-200 rounded-lg p-2.5 outline-none bg-white focus:border-[var(--color-primary)] transition-all"
-                                required
-                            />
-                        </div>
-
-                        <div className="flex flex-col gap-1">
-                            <label className="text-xs font-bold text-gray-700">State <span className="text-red-500">*</span></label>
-                            <input 
-                                type="text"
-                                value={state}
-                                onChange={e => setState(e.target.value)}
-                                placeholder="e.g. Delhi"
-                                className="w-full text-xs border border-gray-200 rounded-lg p-2.5 outline-none bg-white focus:border-[var(--color-primary)] transition-all"
-                                required
-                            />
-                        </div>
                     </div>
 
                     {/* Salary & Details Row */}
@@ -353,7 +428,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                             <label className="text-xs font-bold text-gray-700 flex items-center gap-0.5">
                                 <FaRupeeSign className="text-gray-400 text-2xs" /> Min Salary/Month <span className="text-red-500">*</span>
                             </label>
-                            <input 
+                            <input
                                 type="number"
                                 value={salaryMin}
                                 onChange={e => setSalaryMin(parseInt(e.target.value, 10))}
@@ -366,7 +441,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                             <label className="text-xs font-bold text-gray-700 flex items-center gap-0.5">
                                 <FaRupeeSign className="text-gray-400 text-2xs" /> Max Salary/Month <span className="text-red-500">*</span>
                             </label>
-                            <input 
+                            <input
                                 type="number"
                                 value={salaryMax}
                                 onChange={e => setSalaryMax(parseInt(e.target.value, 10))}
@@ -379,7 +454,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                             <label className="text-xs font-bold text-gray-700 flex items-center gap-1">
                                 <FaGraduationCap className="text-gray-400" /> Required Experience <span className="text-red-500">*</span>
                             </label>
-                            <select 
+                            <select
                                 value={experience}
                                 onChange={e => setExperience(e.target.value)}
                                 className="w-full text-xs border border-gray-200 rounded-lg p-2.5 outline-none bg-white"
@@ -397,7 +472,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                             <label className="text-xs font-bold text-gray-700">Job Description <span className="text-red-500">*</span></label>
                             <span className="text-[10px] text-gray-400">{description.length}/3000 chars</span>
                         </div>
-                        <textarea 
+                        <textarea
                             value={description}
                             onChange={e => setDescription(e.target.value)}
                             placeholder="Write comprehensive roles, responsibilities, and school context..."
@@ -414,7 +489,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                             <label className="text-xs font-bold text-gray-700">Requirements & Eligibility <span className="text-red-500">*</span></label>
                             <span className="text-[10px] text-gray-400">{requirements.length}/2000 chars</span>
                         </div>
-                        <textarea 
+                        <textarea
                             value={requirements}
                             onChange={e => setRequirements(e.target.value)}
                             placeholder="Specify B.Ed/M.Ed eligibility, specific domain knowledge, teaching values..."
@@ -428,7 +503,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                     {/* Skill Tags */}
                     <div className="flex flex-col gap-1">
                         <label className="text-xs font-bold text-gray-700">Required Skills <span className="text-gray-400">(Comma separated)</span></label>
-                        <input 
+                        <input
                             type="text"
                             value={skillsText}
                             onChange={e => setSkillsText(e.target.value)}
@@ -443,7 +518,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                             <label className="text-xs font-bold text-gray-700 flex items-center gap-1">
                                 <FaCalendarAlt className="text-gray-400 text-2xs" /> Application Deadline <span className="text-red-500">*</span>
                             </label>
-                            <input 
+                            <input
                                 type="date"
                                 value={deadline}
                                 onChange={e => setDeadline(e.target.value)}
@@ -454,7 +529,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
 
                         <div className="flex flex-col gap-1">
                             <label className="text-xs font-bold text-gray-700">Open Positions <span className="text-red-500">*</span></label>
-                            <input 
+                            <input
                                 type="number"
                                 value={openPositions}
                                 onChange={e => setOpenPositions(parseInt(e.target.value, 10))}
@@ -465,7 +540,7 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
                         </div>
 
                         <div className="flex items-center gap-2 self-end pb-2.5 pl-1.5">
-                            <input 
+                            <input
                                 type="checkbox"
                                 id="isFeatured"
                                 checked={isFeatured}
@@ -481,14 +556,14 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
 
                 {/* Footer buttons */}
                 <div className="p-4 sm:p-5 border-t border-gray-100 bg-slate-50 flex items-center justify-end gap-3.5">
-                    <button 
+                    <button
                         type="button"
                         onClick={onClose}
                         className="text-xs font-bold text-gray-500 hover:text-gray-700 px-4 py-2 hover:bg-gray-100 rounded-lg transition"
                     >
                         Cancel
                     </button>
-                    <button 
+                    <button
                         onClick={handleSubmit}
                         disabled={isSubmitting}
                         className="bg-[var(--color-primary)] hover:bg-[var(--color-secondary)] text-white text-xs font-bold px-6 py-2.5 rounded-lg transition duration-200 shadow-md flex items-center gap-1.5"
@@ -501,26 +576,35 @@ export default function JobCreatorModal({ isOpen, onClose, onJobCreated, editing
             {showMapPicker && (
                 <MapPicker
                     title="Location Selector"
+                    defaultAddress={location}
                     onLocationSelect={(fullAddress) => {
-                        const parts = fullAddress.split(',').map(p => p.trim());
-                        let detectedCity = '';
-                        let detectedState = '';
-                        if (parts.length >= 2) {
-                            const countryIndex = parts.indexOf('India');
-                            if (countryIndex !== -1 && countryIndex >= 2) {
-                                detectedState = parts[countryIndex - 1].replace(/\d+/g, '').trim();
-                                detectedCity = parts[countryIndex - 2];
-                            } else {
-                                detectedState = parts[parts.length - 2] || '';
-                                detectedCity = parts[parts.length - 3] || parts[parts.length - 2] || '';
-                            }
-                        }
-                        if (detectedCity) setLocation(detectedCity);
-                        if (detectedState) setState(detectedState);
+                        setLocation(fullAddress);
+                        const parsed = parseCityState(fullAddress);
+                        if (parsed.state) setState(parsed.state);
                     }}
                     onClose={() => setShowMapPicker(false)}
                 />
             )}
+
+            <ConfirmDialog
+                isOpen={showConfirmDialog}
+                onClose={() => {
+                    setShowConfirmDialog(false);
+                    const defaultAddress = institutionName && institutionAddress 
+                        ? `${institutionName}, ${institutionAddress}` 
+                        : (institutionAddress || "Ryan International School, Sector C, Vasant Kunj, New Delhi, Delhi, India");
+                    setLocation(defaultAddress);
+                }}
+                onConfirm={() => {
+                    setShowConfirmDialog(false);
+                    setShowMapPicker(true);
+                }}
+                title="Create Job for Another Location?"
+                message="Are you sure you want to create a job for another location?"
+                confirmText="Yes, Open Map"
+                cancelText="No, Keep Current Address"
+                type="warning"
+            />
         </div>
     );
 }
