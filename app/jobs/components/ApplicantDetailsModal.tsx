@@ -12,6 +12,7 @@ import {
 import { Application, CommunicationLog, ApplicationNote } from '../types';
 import { jobsRepository } from '../jobsRepository';
 import { toast } from 'react-toastify';
+import { supabase } from '@/lib/supabase';
 
 interface ApplicantDetailsModalProps {
     isOpen: boolean;
@@ -25,6 +26,7 @@ export default function ApplicantDetailsModal({ isOpen, applicationId, onClose, 
     const [notes, setNotes] = useState<ApplicationNote[]>([]);
     const [newNote, setNewNote] = useState('');
     const [commLogs, setCommLogs] = useState<CommunicationLog[]>([]);
+    const [profile, setProfile] = useState<any>(null);
 
     // Communication Form State
     const [emailSubject, setEmailSubject] = useState('');
@@ -41,6 +43,16 @@ export default function ApplicantDetailsModal({ isOpen, applicationId, onClose, 
                 setNotes(foundApp.notes || []);
                 const logs = await jobsRepository.getCommunicationLogs(applicationId);
                 setCommLogs(logs);
+
+                // Fetch Profile from Supabase
+                const { data: profData, error: profErr } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('user_id', foundApp.teacherId)
+                    .single();
+                if (!profErr && profData) {
+                    setProfile(profData);
+                }
             }
         } catch (err) {
             console.error('Failed to load applicant details', err);
@@ -221,6 +233,100 @@ export default function ApplicantDetailsModal({ isOpen, applicationId, onClose, 
                 <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 gap-5 p-5">
                     {/* LEFT PANEL: PROFILE, COVER LETTER, RESUME PREVIEW (Col 7) */}
                     <div className="lg:col-span-7 flex flex-col gap-4">
+
+                        {/* Educator Detailed Profile */}
+                        {profile && (
+                            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-2xs">
+                                <h3 className="text-xs font-bold text-gray-700 mb-3 flex items-center gap-2">
+                                    <FaGraduationCap className="text-xs text-[var(--color-secondary)]" /> Professional Profile Details
+                                </h3>
+                                
+                                <div className="flex items-start gap-3.5 mb-3.5 pb-3 border-b border-slate-100">
+                                    {profile.profile_pic_url ? (
+                                        <img src={profile.profile_pic_url} alt="Profile Photo" className="w-12 h-12 rounded-full object-cover border border-slate-200" />
+                                    ) : (
+                                        <div className="w-12 h-12 rounded-full bg-[var(--color-primary)] text-white font-black flex items-center justify-center text-sm">
+                                            {app.teacherName.charAt(0)}
+                                        </div>
+                                    )}
+                                    <div className="min-w-0 flex-1">
+                                        <h4 className="text-sm font-bold text-gray-800">{app.teacherName}</h4>
+                                        <p className="text-xs text-gray-600 font-medium leading-normal mt-0.5">{profile.headline || 'Educator Profile'}</p>
+                                        <p className="text-[10px] text-gray-400 font-medium mt-0.5 flex items-center gap-1"><FaMapMarkerAlt /> {profile.location || 'India'}</p>
+                                    </div>
+                                </div>
+
+                                {profile.about && (
+                                    <div className="mb-4">
+                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase mb-1">About / Summary</h4>
+                                        <p className="text-xs leading-relaxed text-gray-600">{profile.about}</p>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {profile.skills && profile.skills.length > 0 && (
+                                        <div>
+                                            <h4 className="text-[10px] font-bold text-gray-400 uppercase mb-1.5">Key Skills</h4>
+                                            <div className="flex flex-wrap gap-1">
+                                                {profile.skills.map((skill: string) => (
+                                                    <span key={skill} className="text-[10px] font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
+                                                        {skill}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {profile.specializations && profile.specializations.length > 0 && (
+                                        <div>
+                                            <h4 className="text-[10px] font-bold text-gray-400 uppercase mb-1.5">Specializations</h4>
+                                            <div className="flex flex-wrap gap-1">
+                                                {profile.specializations.map((spec: string) => (
+                                                    <span key={spec} className="text-[10px] font-semibold bg-blue-50 text-[var(--color-primary)] px-2 py-0.5 rounded border border-blue-100">
+                                                        {spec}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {profile.experience && profile.experience.length > 0 && (
+                                    <div className="mt-4 pt-3.5 border-t border-slate-100">
+                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase mb-2.5 flex items-center gap-1"><FaBriefcase /> Work Experience</h4>
+                                        <div className="space-y-3">
+                                            {profile.experience.map((exp: any, idx: number) => (
+                                                <div key={idx} className="border-l-2 border-slate-200 pl-3 py-0.5">
+                                                    <div className="flex items-center justify-between text-xs">
+                                                        <strong className="text-gray-800 font-bold">{exp.title}</strong>
+                                                        <span className="text-[10px] text-gray-400 font-semibold">{exp.duration}</span>
+                                                    </div>
+                                                    <div className="text-[11px] text-gray-500 font-semibold">{exp.company} {exp.location ? `• ${exp.location}` : ''}</div>
+                                                    {exp.summary && <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">{exp.summary}</p>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {profile.education && profile.education.length > 0 && (
+                                    <div className="mt-4 pt-3.5 border-t border-slate-100">
+                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase mb-2.5 flex items-center gap-1"><FaGraduationCap /> Education History</h4>
+                                        <div className="space-y-2.5">
+                                            {profile.education.map((edu: any, idx: number) => (
+                                                <div key={idx} className="border-l-2 border-slate-200 pl-3 py-0.5">
+                                                    <div className="flex items-center justify-between text-xs">
+                                                        <strong className="text-gray-800 font-bold">{edu.degree}</strong>
+                                                        <span className="text-[10px] text-gray-400 font-semibold">{edu.duration}</span>
+                                                    </div>
+                                                    <div className="text-[11px] text-gray-500 font-semibold">{edu.institution}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Summary Details */}
                         <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-2xs">

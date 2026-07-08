@@ -14,7 +14,8 @@ import {
     FaEye, FaGlobe, FaBuilding, FaGraduationCap, FaPaperPlane,
     FaArrowRight, FaSchool, FaChartLine, FaChevronUp, FaChevronDown,
     FaChartBar, FaLightbulb, FaCalendarCheck, FaStar, FaVideo, FaFireAlt,
-    FaFilePdf, FaFileWord, FaDownload, FaChevronLeft, FaChevronRight
+    FaFilePdf, FaFileWord, FaDownload, FaChevronLeft, FaChevronRight,
+    FaExclamationTriangle, FaBan
 } from 'react-icons/fa';
 import { MdWork, MdVerified, MdLocationOn, MdTrendingUp } from 'react-icons/md';
 import { HiLightningBolt } from 'react-icons/hi';
@@ -110,8 +111,8 @@ const RightPanelTitle = ({ icon, title }: { icon: React.ReactNode; title: string
     );
 };
 
-const JobCard = ({ job, index, saved, hasApplied, matchRating, onToggleSave, onApplyClick, onCardClick }: {
-    job: Job; index: number; saved: boolean; hasApplied: boolean; matchRating: number | null; onToggleSave: (id: string) => void; onApplyClick: (job: Job) => void; onCardClick: (index: number) => void;
+const JobCard = ({ job, index, saved, hasApplied, matchRating, onToggleSave, onApplyClick, onCardClick, applicantsCount }: {
+    job: Job; index: number; saved: boolean; hasApplied: boolean; matchRating: number | null; onToggleSave: (id: string) => void; onApplyClick: (job: Job) => void; onCardClick: (index: number) => void; applicantsCount: number;
 }) => {
     const schoolInitial = job.schoolInitial || job.school.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
     const getSchoolColor = (name: string) => {
@@ -217,7 +218,7 @@ const JobCard = ({ job, index, saved, hasApplied, matchRating, onToggleSave, onA
                         <FaClock className="text-[10px]" />{job.postedDate || 'Active'}
                     </span>
                     <span className="flex items-center gap-1 text-[10px] text-gray-400 font-semibold">
-                        <FaUserTie className="text-[10px]" />{job.applicants} applied
+                        <FaUserTie className="text-[10px]" />{applicantsCount} applied
                     </span>
                 </div>
                 {hasApplied ? (
@@ -228,7 +229,7 @@ const JobCard = ({ job, index, saved, hasApplied, matchRating, onToggleSave, onA
                         <FaCheckCircle className="text-emerald-500" /> Applied
                     </button>
                 ) : (
-                    <button 
+                    <button
                         onClick={e => { e.stopPropagation(); onApplyClick(job); }}
                         className="bg-[var(--color-primary)] hover:bg-[var(--color-secondary)] text-white text-[10px] font-bold px-3.5 py-1.5 rounded-lg transition-colors flex items-center gap-1 shadow-2xs"
                     >
@@ -252,11 +253,13 @@ export default function JobsPage() {
     const [viewMode, setViewMode] = useState<'teacher' | 'institution'>('teacher');
     const [jobs, setJobs] = useState<Job[]>([]);
     const [institutionJobsList, setInstitutionJobsList] = useState<Job[]>([]);
+    const [jobsLoading, setJobsLoading] = useState(true);
     const [applications, setApplications] = useState<Application[]>([]);
     const [savedJobIds, setSavedJobIds] = useState<string[]>([]);
     const [teacherSettings, setTeacherSettings] = useState<TeacherSettings | null>(null);
     const [institutionSettings, setInstitutionSettings] = useState<InstitutionSettings | null>(null);
     const [resumeData, setResumeData] = useState<Resume | null>(null);
+    const [highlightResumeUpload, setHighlightResumeUpload] = useState(false);
 
 
     // Modal Triggers
@@ -274,7 +277,7 @@ export default function JobsPage() {
     // Derived session context IDs
     const activeTeacherId = authUserId || DUMMY_TEACHER_ID;
     const activeInstitutionId = authUserId || DUMMY_INSTITUTION_ID;
-    
+
     // Slideable Job Details Modal states
     const [selectedJobIndex, setSelectedJobIndex] = useState<number | null>(null);
     const [slideDirection, setSlideDirection] = useState<number>(0);
@@ -306,6 +309,7 @@ export default function JobsPage() {
     const [applicantSubjectFilter, setApplicantSubjectFilter] = useState('All Subjects');
 
     const loadData = async (cachedJobs?: Job[]) => {
+        setJobsLoading(true);
         try {
             const { data: { user } } = await supabase.auth.getUser();
             const teacherId = user ? user.id : DUMMY_TEACHER_ID;
@@ -316,10 +320,16 @@ export default function JobsPage() {
             if (!cachedJobs) setJobs(allJobs);
 
             // Institution view: all their own jobs including paused/archived
-            const instJobs = await jobsRepository.getInstitutionJobs();
+            const instJobs = await jobsRepository.getInstitutionJobs(institutionId);
             setInstitutionJobsList(instJobs);
 
-            const allApps = await jobsRepository.getApplications(allJobs);
+            // Merge active jobs and institution jobs to create a comprehensive cache for getApplications
+            const mergedJobsMap = new Map<string, Job>();
+            allJobs.forEach(j => mergedJobsMap.set(j.id, j));
+            instJobs.forEach(j => mergedJobsMap.set(j.id, j));
+            const mergedJobs = Array.from(mergedJobsMap.values());
+
+            const allApps = await jobsRepository.getApplications(mergedJobs);
             setApplications(allApps);
             const savedList = await jobsRepository.getSavedJobsList(teacherId);
             setSavedJobIds(savedList);
@@ -331,6 +341,8 @@ export default function JobsPage() {
             setResumeData(resume);
         } catch (err) {
             console.error('Failed to load repository data', err);
+        } finally {
+            setJobsLoading(false);
         }
     };
 
@@ -496,11 +508,11 @@ export default function JobsPage() {
         }
         if (applicantExpFilter !== 'Any Experience') {
             // matches experience requirements
-            const matchingJobs = jobs.filter(j => j.experience === applicantExpFilter).map(j => j.id);
+            const matchingJobs = institutionJobsList.filter(j => j.experience === applicantExpFilter).map(j => j.id);
             list = list.filter(a => matchingJobs.includes(a.jobId));
         }
         if (applicantSubjectFilter !== 'All Subjects') {
-            const matchingJobs = jobs.filter(j => j.subject === applicantSubjectFilter).map(j => j.id);
+            const matchingJobs = institutionJobsList.filter(j => j.subject === applicantSubjectFilter).map(j => j.id);
             list = list.filter(a => matchingJobs.includes(a.jobId));
         }
 
@@ -528,6 +540,28 @@ export default function JobsPage() {
 
     const handleConfirmApply = async () => {
         if (!applyingJob) return;
+
+        if (!resumeData || !resumeData.fileUrl) {
+            toast.error("Please upload your resume to apply for this job. The resume upload section has been highlighted.");
+            setHighlightResumeUpload(true);
+            
+            // Auto-scroll to the resume upload section
+            setTimeout(() => {
+                const card = document.getElementById("resume-upload-card");
+                if (card) {
+                    card.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
+            }, 100);
+
+            // Turn off highlight after 6 seconds
+            setTimeout(() => {
+                setHighlightResumeUpload(false);
+            }, 6000);
+            
+            setApplyingJob(null);
+            return;
+        }
+
         try {
             await jobsRepository.applyJob({
                 jobId: applyingJob.id,
@@ -563,7 +597,7 @@ export default function JobsPage() {
             const updated = await jobsRepository.saveInstitutionSettings(activeInstitutionId, { hiringStatus: status });
             setInstitutionSettings(updated);
             toast.success('Recruitment settings updated.');
-            
+
             if (status === 'Actively Hiring') {
                 const activeJobsCount = jobs.filter(j => j.status === 'active').length;
                 await jobsRepository.addNotification(activeTeacherId, {
@@ -687,8 +721,8 @@ export default function JobsPage() {
                             <button
                                 onClick={() => setViewMode('teacher')}
                                 className={`text-xs font-black px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 ${viewMode === 'teacher'
-                                        ? 'bg-[var(--color-primary)] text-white shadow'
-                                        : 'text-gray-600 hover:bg-slate-200'
+                                    ? 'bg-[var(--color-primary)] text-white shadow'
+                                    : 'text-gray-600 hover:bg-slate-200'
                                     }`}
                             >
                                 <FaUserTie className="text-2xs" /> Educator Profile View
@@ -696,8 +730,8 @@ export default function JobsPage() {
                             <button
                                 onClick={() => setViewMode('institution')}
                                 className={`text-xs font-black px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 ${viewMode === 'institution'
-                                        ? 'bg-[var(--color-secondary)] text-white shadow'
-                                        : 'text-gray-600 hover:bg-slate-200'
+                                    ? 'bg-[var(--color-secondary)] text-white shadow'
+                                    : 'text-gray-600 hover:bg-slate-200'
                                     }`}
                             >
                                 <FaSchool className="text-2xs" /> Institution Recruiter View
@@ -727,23 +761,32 @@ export default function JobsPage() {
                                 <MdWork className="text-2xl opacity-70" /> {viewMode === 'teacher' ? 'Find Your Teaching Career' : 'Recruitment Pipeline Controls'}
                             </h1>
                             <p className="text-white/65 text-sm mt-1 max-w-lg">
-                                {viewMode === 'teacher' 
+                                {viewMode === 'teacher'
                                     ? 'Opportunities across CBSE, ICSE & State Board schools — built exclusively for educators.'
                                     : 'Manage active postings, review smart matches, and coordinate interview communications.'}
                             </p>
                         </div>
                         <div className="flex items-center gap-3 flex-wrap">
                             <div className="bg-white/10 border border-white/20 rounded-lg px-4 py-2.5 text-center backdrop-blur-sm">
-                                <p className="text-xl font-bold text-white oswald-font">{jobs.length}</p>
+                                <p className="text-xl font-bold text-white oswald-font">
+                                    {viewMode === 'teacher' 
+                                        ? jobs.length 
+                                        : institutionJobsList.filter(j => j.status === 'active').length}
+                                </p>
                                 <p className="text-[11px] text-white/55">Active Jobs</p>
                             </div>
                             <div className="bg-white/10 border border-white/20 rounded-lg px-4 py-2.5 text-center backdrop-blur-sm">
-                                <p className="text-xl font-bold text-white oswald-font">{applications.length}</p>
-                                <p className="text-[11px] text-white/55">Applicants</p>
-                            </div>
-                            <div className="bg-white/10 border border-white/20 rounded-lg px-4 py-2.5 text-center backdrop-blur-sm">
-                                <p className="text-xl font-bold text-white oswald-font">12K+</p>
-                                <p className="text-[11px] text-white/55">Placements</p>
+                                <p className="text-xl font-bold text-white oswald-font">
+                                    {viewMode === 'teacher' 
+                                        ? applications.filter(app => app.teacherId === activeTeacherId).length
+                                        : (() => {
+                                            const instJobIds = new Set(institutionJobsList.map(j => j.id));
+                                            return applications.filter(app => instJobIds.has(app.jobId)).length;
+                                        })()}
+                                </p>
+                                <p className="text-[11px] text-white/55">
+                                    {viewMode === 'teacher' ? 'Jobs Applied' : 'Applicants'}
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -820,14 +863,14 @@ export default function JobsPage() {
                         <div>
                             <p className="text-[11px] font-bold text-[var(--color-primary)] capitalize tracking-wider">{viewMode === 'teacher' ? 'For Institution' : 'For Recruiters'}</p>
                             <p className="text-[13px] text-gray-600">
-                                {viewMode === 'teacher' 
-                                    ? 'Post a vacancy and connect with 50,000+ qualified teachers instantly.' 
+                                {viewMode === 'teacher'
+                                    ? 'Post a vacancy and connect with 50,000+ qualified teachers instantly.'
                                     : 'Need to list a new job opening? Create and publish a vacancy now.'}
                             </p>
                         </div>
                     </div>
                     {viewMode === 'teacher' ? (
-                        <button 
+                        <button
                             onClick={() => {
                                 if (userRole === 'super_admin' || userRole === 'institution' || userRole === 'institution_admin' || !userRole) {
                                     setViewMode('institution');
@@ -840,7 +883,7 @@ export default function JobsPage() {
                             <MdWork /> Switch to Recruiter <FaArrowRight className="text-xs" />
                         </button>
                     ) : (
-                        <button 
+                        <button
                             onClick={() => setShowJobCreator(true)}
                             className="bg-[var(--color-secondary)] hover:bg-[#0d3812] text-white text-[13px] font-semibold px-5 py-2 rounded-lg flex items-center gap-2 flex-shrink-0 transition-colors"
                         >
@@ -857,12 +900,21 @@ export default function JobsPage() {
                         {/* Column 1: Filters Panel & Settings (Left Sidebar) */}
                         <aside className="hidden xl:flex flex-col gap-5 sticky top-24 self-start max-h-[calc(100vh-10rem)] sidebar-scroll pr-1 rounded-lg">
                             {/* Resume Upload card */}
-                            <ResumeUpload 
-                                teacherId={activeTeacherId} 
-                                onResumeChange={loadData} 
-                                showPreview={showResumePreview} 
-                                onPreviewClick={() => setShowResumePreview(!showResumePreview)} 
-                            />
+                            <div 
+                                id="resume-upload-card" 
+                                className={`rounded-xl transition-all duration-300 ${
+                                    highlightResumeUpload 
+                                        ? "ring-4 ring-amber-500/80 shadow-[0_0_20px_rgba(245,158,11,0.6)] animate-pulse scale-102" 
+                                        : ""
+                                }`}
+                            >
+                                <ResumeUpload
+                                    teacherId={activeTeacherId}
+                                    onResumeChange={loadData}
+                                    showPreview={showResumePreview}
+                                    onPreviewClick={() => setShowResumePreview(!showResumePreview)}
+                                />
+                            </div>
 
                             {/* Open-to-work toggle card */}
                             <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
@@ -992,7 +1044,7 @@ export default function JobsPage() {
                                     <FaBell className="mx-auto text-lg text-white/80 mb-1" />
                                     <p className="text-[12px] font-bold text-white">Never Miss a Role</p>
                                     <p className="text-xs text-white/60 mt-0.5 font-medium">Get email alerts for these filters</p>
-                                    <button 
+                                    <button
                                         onClick={() => {
                                             toast.info("Notifications configured for your preferences.");
                                         }}
@@ -1035,35 +1087,45 @@ export default function JobsPage() {
 
                             {/* Job cards list */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {filteredJobs.map((job, idx) => {
-                                    const isSaved = savedJobIds.includes(job.id);
-                                    const hasApplied = applications.some(a => a.jobId === job.id && a.teacherId === activeTeacherId);
-                                    const matchRating = teacherSettings ? calculateMatchScore(job, teacherSettings).score : null;
-
-                                    return (
-                                        <JobCard 
-                                            key={job.id}
-                                            job={job}
-                                            index={idx}
-                                            saved={isSaved}
-                                            hasApplied={hasApplied}
-                                            matchRating={matchRating}
-                                            onToggleSave={handleToggleSave}
-                                            onApplyClick={handleApplyClick}
-                                            onCardClick={(index) => {
-                                                setSlideDirection(0);
-                                                setSelectedJobIndex(index);
-                                            }}
-                                        />
-                                    );
-                                })}
-
-                                {filteredJobs.length === 0 && (
-                                    <div className="col-span-1 sm:col-span-2 bg-white rounded-xl border border-gray-200 p-12 text-center shadow-2xs">
-                                        <FaBriefcase className="mx-auto text-4xl text-slate-200 mb-3 animate-pulse" />
-                                        <h4 className="font-bold text-gray-700 text-sm">No Jobs Found</h4>
-                                        <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">We couldn&apos;t find any roles matching your current search filters. Try adjusting your query or resetting the filters.</p>
+                                {jobsLoading ? (
+                                    <div className="col-span-1 sm:col-span-2 bg-white rounded-xl border border-gray-200 p-12 text-center shadow-2xs flex flex-col items-center justify-center min-h-[300px]">
+                                        <div className="w-10 h-10 border-4 border-slate-100 border-t-[var(--color-primary)] rounded-full animate-spin mb-3"></div>
+                                        <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Loading jobs list...</p>
                                     </div>
+                                ) : (
+                                    <>
+                                        {filteredJobs.map((job, idx) => {
+                                            const isSaved = savedJobIds.includes(job.id);
+                                            const hasApplied = applications.some(a => a.jobId === job.id && a.teacherId === activeTeacherId);
+                                            const matchRating = teacherSettings ? calculateMatchScore(job, teacherSettings).score : null;
+
+                                            return (
+                                                <JobCard 
+                                                    key={job.id}
+                                                    job={job}
+                                                    index={idx}
+                                                    saved={isSaved}
+                                                    hasApplied={hasApplied}
+                                                    matchRating={matchRating}
+                                                    applicantsCount={applications.filter(a => a.jobId === job.id).length}
+                                                    onToggleSave={handleToggleSave}
+                                                    onApplyClick={handleApplyClick}
+                                                    onCardClick={(index) => {
+                                                        setSlideDirection(0);
+                                                        setSelectedJobIndex(index);
+                                                    }}
+                                                />
+                                            );
+                                        })}
+
+                                        {filteredJobs.length === 0 && (
+                                            <div className="col-span-1 sm:col-span-2 bg-white rounded-xl border border-gray-200 p-12 text-center shadow-2xs">
+                                                <FaBriefcase className="mx-auto text-4xl text-slate-200 mb-3 animate-pulse" />
+                                                <h4 className="font-bold text-gray-700 text-sm">No Jobs Found</h4>
+                                                <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">We couldn&apos;t find any roles matching your current search filters. Try adjusting your query or resetting the filters.</p>
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </div>
@@ -1126,11 +1188,11 @@ export default function JobsPage() {
                                             ) : (
                                                 <ul className="flex flex-col gap-2">
                                                     {applications.slice(0, 3).map((a) => {
-                                                        const statusColor = 
+                                                        const statusColor =
                                                             a.status === 'Shortlisted' ? 'bg-green-50 text-green-700 border-green-100' :
-                                                            a.status === 'Interview Scheduled' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                                                            a.status === 'Under Review' ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                                                            a.status === 'Rejected' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-slate-50 text-slate-700 border-slate-100';
+                                                                a.status === 'Interview Scheduled' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                                                                    a.status === 'Under Review' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                                                                        a.status === 'Rejected' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-slate-50 text-slate-700 border-slate-100';
 
                                                         return (
                                                             <li
@@ -1149,7 +1211,7 @@ export default function JobsPage() {
                                                     })}
                                                 </ul>
                                             )}
-                                            <button 
+                                            <button
                                                 onClick={() => setActiveTab('applied')}
                                                 className="mt-2 w-full text-[10px] text-[var(--color-primary)] hover:text-[var(--color-secondary)] font-bold flex items-center justify-center gap-1 transition-colors"
                                             >
@@ -1316,46 +1378,59 @@ export default function JobsPage() {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100 font-medium">
-                                            {institutionJobs.map(job => (
-                                                <tr key={job.id} className="hover:bg-slate-50/50">
-                                                    <td className="p-3.5 font-bold text-gray-800">{job.title}</td>
-                                                    <td className="p-3.5 text-gray-600">{job.subject}</td>
-                                                    <td className="p-3.5 text-gray-500">{job.experience}</td>
-                                                    <td className="p-3.5 text-center text-gray-700">{job.openPositions}</td>
-                                                    <td className="p-3.5 text-center text-[var(--color-primary)] font-bold">{job.applicants}</td>
-                                                    <td className="p-3.5 text-gray-500">{new Date(job.deadline).toLocaleDateString()}</td>
-                                                    <td className="p-3.5 text-center">
-                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${job.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                                                            }`}>
-                                                            {job.status}
-                                                        </span>
-                                                    </td>
-                                                    <td className="p-3.5 text-right space-x-1.5 font-semibold">
-                                                        <button
-                                                            onClick={() => handlePauseJob(job)}
-                                                            className="text-2xs font-bold text-gray-500 hover:text-slate-700 bg-slate-100 px-2 py-1 rounded"
-                                                        >
-                                                            {job.status === 'paused' ? 'Resume' : 'Pause'}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => { setEditingJob(job); setShowJobCreator(true); }}
-                                                            className="text-2xs font-bold text-[var(--color-primary)] hover:text-blue-700 bg-blue-50 px-2 py-1 rounded"
-                                                        >
-                                                            Edit
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleDeleteJob(job.id)}
-                                                            className="text-2xs font-bold text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded"
-                                                        >
-                                                            Delete
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                            {institutionJobs.length === 0 && (
+                                            {jobsLoading ? (
                                                 <tr>
-                                                    <td colSpan={8} className="p-8 text-center text-gray-400">No jobs posted yet. Click &ldquo;Post a Job&rdquo; to begin recruiting.</td>
+                                                    <td colSpan={8} className="p-12 text-center text-gray-500">
+                                                        <div className="flex flex-col items-center justify-center">
+                                                            <div className="w-8 h-8 border-4 border-slate-100 border-t-[var(--color-primary)] rounded-full animate-spin mb-3"></div>
+                                                            <p className="text-2xs font-bold uppercase tracking-wider">Loading postings...</p>
+                                                        </div>
+                                                    </td>
                                                 </tr>
+                                            ) : (
+                                                <>
+                                                    {institutionJobs.map(job => (
+                                                        <tr key={job.id} className="hover:bg-slate-50/50">
+                                                            <td className="p-3.5 font-bold text-gray-800">{job.title}</td>
+                                                            <td className="p-3.5 text-gray-600">{job.subject}</td>
+                                                            <td className="p-3.5 text-gray-500">{job.experience}</td>
+                                                            <td className="p-3.5 text-center text-gray-700">{job.openPositions}</td>
+                                                            <td className="p-3.5 text-center text-[var(--color-primary)] font-bold">{applications.filter(a => a.jobId === job.id).length}</td>
+                                                            <td className="p-3.5 text-gray-500">{new Date(job.deadline).toLocaleDateString()}</td>
+                                                            <td className="p-3.5 text-center">
+                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${job.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                                                                    }`}>
+                                                                    {job.status}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-3.5 text-right space-x-1.5 font-semibold">
+                                                                <button
+                                                                    onClick={() => handlePauseJob(job)}
+                                                                    className="text-2xs font-bold text-gray-500 hover:text-slate-700 bg-slate-100 px-2 py-1 rounded"
+                                                                >
+                                                                    {job.status === 'paused' ? 'Resume' : 'Pause'}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => { setEditingJob(job); setShowJobCreator(true); }}
+                                                                    className="text-2xs font-bold text-[var(--color-primary)] hover:text-blue-700 bg-blue-50 px-2 py-1 rounded"
+                                                                >
+                                                                    Edit
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleDeleteJob(job.id)}
+                                                                    className="text-2xs font-bold text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded"
+                                                                >
+                                                                    Delete
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                    {institutionJobs.length === 0 && (
+                                                        <tr>
+                                                            <td colSpan={8} className="p-8 text-center text-gray-400">No jobs posted yet. Click &ldquo;Post a Job&rdquo; to begin recruiting.</td>
+                                                        </tr>
+                                                    )}
+                                                </>
                                             )}
                                         </tbody>
                                     </table>
@@ -1365,87 +1440,128 @@ export default function JobsPage() {
 
                         {/* TAB 2: APPLICANT TRACKING BOARD */}
                         {instTab === 'applicants' && (
-                            <div className="flex flex-col gap-4">
+                            <div className="flex flex-col gap-5">
                                 {/* Search & filter criteria */}
-                                <div className="bg-white p-3.5 rounded-xl border border-gray-200 shadow-2xs flex gap-3 flex-wrap items-center">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-2xs font-bold text-gray-500 uppercase">Status:</span>
-                                        <select
-                                            value={applicantStatusFilter}
-                                            onChange={e => setApplicantStatusFilter(e.target.value)}
-                                            className="text-xs border border-gray-200 rounded p-1 bg-white outline-none font-semibold"
-                                        >
-                                            {['All Statuses', 'Applied', 'Viewed', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Selected', 'Rejected'].map(st => (
-                                                <option key={st} value={st}>{st}</option>
-                                            ))}
-                                        </select>
+                                <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-2xs flex flex-row items-center gap-4 flex-wrap">
+                                    <div className="flex items-center gap-2 mr-2">
+                                        <FaFilter className="text-[var(--color-secondary)] text-sm flex-shrink-0" />
+                                        <span className="text-xs font-bold text-gray-800 oswald-font tracking-wide">Filter Candidates</span>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-2xs font-bold text-gray-500 uppercase">Experience:</span>
-                                        <select
-                                            value={applicantExpFilter}
-                                            onChange={e => setApplicantExpFilter(e.target.value)}
-                                            className="text-xs border border-gray-200 rounded p-1 bg-white outline-none font-semibold"
-                                        >
-                                            {['Any Experience', 'Fresher', '1-3 Years', '3-5 Years', '5-10 Years', '10+ Years'].map(ex => (
-                                                <option key={ex} value={ex}>{ex}</option>
-                                            ))}
-                                        </select>
+                                    
+                                    <div className="flex flex-col gap-1.5 min-w-[150px]">
+                                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">Application Status</span>
+                                        <div className="relative">
+                                            <select
+                                                value={applicantStatusFilter}
+                                                onChange={e => setApplicantStatusFilter(e.target.value)}
+                                                className="w-full text-xs border border-gray-200 rounded-lg py-1.5 pl-3 pr-8 bg-slate-50/50 hover:bg-slate-50 transition outline-none font-bold text-gray-700 focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]/10 appearance-none cursor-pointer"
+                                            >
+                                                {['All Statuses', 'Applied', 'Viewed', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Selected', 'Rejected'].map(st => (
+                                                    <option key={st} value={st}>{st}</option>
+                                                ))}
+                                            </select>
+                                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                                                <FaChevronDown className="text-[9px]" />
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-2xs font-bold text-gray-500 uppercase">Subject:</span>
-                                        <select
-                                            value={applicantSubjectFilter}
-                                            onChange={e => setApplicantSubjectFilter(e.target.value)}
-                                            className="text-xs border border-gray-200 rounded p-1 bg-white outline-none font-semibold"
-                                        >
-                                            {['All Subjects', 'Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Computer Science', 'General', 'Special Education'].map(su => (
-                                                <option key={su} value={su}>{su}</option>
-                                            ))}
-                                        </select>
+
+                                    <div className="flex flex-col gap-1.5 min-w-[150px]">
+                                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">Experience Level</span>
+                                        <div className="relative">
+                                            <select
+                                                value={applicantExpFilter}
+                                                onChange={e => setApplicantExpFilter(e.target.value)}
+                                                className="w-full text-xs border border-gray-200 rounded-lg py-1.5 pl-3 pr-8 bg-slate-50/50 hover:bg-slate-50 transition outline-none font-bold text-gray-700 focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]/10 appearance-none cursor-pointer"
+                                            >
+                                                {['Any Experience', 'Fresher', '1-3 Years', '3-5 Years', '5-10 Years', '10+ Years'].map(ex => (
+                                                    <option key={ex} value={ex}>{ex}</option>
+                                                ))}
+                                            </select>
+                                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                                                <FaChevronDown className="text-[9px]" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col gap-1.5 min-w-[150px]">
+                                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">Subject Specialty</span>
+                                        <div className="relative">
+                                            <select
+                                                value={applicantSubjectFilter}
+                                                onChange={e => setApplicantSubjectFilter(e.target.value)}
+                                                className="w-full text-xs border border-gray-200 rounded-lg py-1.5 pl-3 pr-8 bg-slate-50/50 hover:bg-slate-50 transition outline-none font-bold text-gray-700 focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]/10 appearance-none cursor-pointer"
+                                            >
+                                                {['All Subjects', 'Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Computer Science', 'General', 'Special Education'].map(su => (
+                                                    <option key={su} value={su}>{su}</option>
+                                                ))}
+                                            </select>
+                                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                                                <FaChevronDown className="text-[9px]" />
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
                                 {/* Applicant Grid board */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
                                     {filteredApplicants.map(app => (
-                                        <div
+                                        <motion.div
                                             key={app.id}
                                             onClick={() => setSelectedApplicationId(app.id)}
-                                            className="bg-white rounded-xl border border-gray-200 p-4 shadow-2xs hover:shadow hover:border-slate-300 transition cursor-pointer flex flex-col justify-between"
+                                            whileHover={{ y: -3, boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)' }}
+                                            className="bg-white rounded-2xl border border-gray-200/80 p-5 shadow-2xs hover:border-[var(--color-primary)]/30 transition-all duration-300 cursor-pointer flex flex-col justify-between gap-4"
                                         >
                                             <div>
-                                                <div className="flex items-start justify-between gap-2.5 mb-2">
-                                                    <div>
-                                                        <h4 className="font-bold text-gray-800 text-xs sm:text-sm">{app.teacherName}</h4>
-                                                        <p className="text-[10px] text-gray-400 font-medium">{app.teacherEmail}</p>
+                                                <div className="flex items-start gap-3.5 mb-3">
+                                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-secondary)] text-white font-extrabold flex items-center justify-center text-sm shadow-xs select-none">
+                                                        {app.teacherName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                                                     </div>
-                                                    <span className="text-[9px] font-black px-2 py-0.5 rounded bg-blue-50 text-[var(--color-primary)] border border-blue-100 flex-shrink-0">
-                                                        {app.matchScore}% Match
-                                                    </span>
+                                                    <div className="min-w-0 flex-1">
+                                                        <h4 className="font-bold text-gray-800 text-xs sm:text-[13px] leading-snug truncate">{app.teacherName}</h4>
+                                                        <p className="text-[10px] text-gray-400 font-medium truncate mt-0.5">{app.teacherEmail}</p>
+                                                    </div>
                                                 </div>
 
-                                                <div className="border-t border-slate-50 pt-2 pb-1 text-2xs space-y-1 text-gray-500">
-                                                    <div><strong>Job Title:</strong> {app.jobTitle}</div>
-                                                    <div><strong>Applied:</strong> {new Date(app.appliedAt).toLocaleDateString()}</div>
+                                                <div className="border-t border-dashed border-slate-100 pt-3 pb-1 text-2xs space-y-2 text-gray-600">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="text-gray-400">Applied For:</span>
+                                                        <span className="font-bold text-gray-800 truncate text-right max-w-[150px]">{app.jobTitle}</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="text-gray-400">Applied On:</span>
+                                                        <span className="font-semibold text-gray-700">{new Date(app.appliedAt).toLocaleDateString()}</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="text-gray-400">Matching Rating:</span>
+                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                                            app.matchScore >= 80 ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                                                            app.matchScore >= 60 ? 'bg-amber-50 text-amber-700 border border-amber-100' :
+                                                            'bg-slate-50 text-slate-700 border border-slate-100'
+                                                        }`}>
+                                                            {app.matchScore}% Match
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </div>
 
-                                            <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
-                                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${app.status === 'Shortlisted' ? 'bg-emerald-100 text-emerald-700' :
-                                                        app.status === 'Interview Scheduled' ? 'bg-purple-100 text-purple-700' :
-                                                            app.status === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
-                                                    }`}>
+                                            <div className="pt-3.5 border-t border-slate-100 flex items-center justify-between gap-2 mt-auto">
+                                                <span className={`text-[9px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider ${
+                                                    app.status === 'Shortlisted' || app.status === 'Selected' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                                                    app.status === 'Interview Scheduled' || app.status === 'Under Review' ? 'bg-purple-50 text-purple-700 border border-purple-100' :
+                                                    app.status === 'Rejected' ? 'bg-red-50 text-red-700 border border-red-100' : 
+                                                    'bg-slate-50 text-slate-600 border border-slate-100'
+                                                }`}>
                                                     {app.status}
                                                 </span>
-                                                <span className="text-[9px] text-[var(--color-primary)] hover:underline font-bold flex items-center gap-0.5">
-                                                    Open Profile <FaArrowRight className="text-3xs" />
+                                                <span className="text-[10px] text-[var(--color-primary)] hover:text-[var(--color-secondary)] transition-colors font-bold flex items-center gap-0.5">
+                                                    Review Application <FaArrowRight className="text-3xs" />
                                                 </span>
                                             </div>
-                                        </div>
+                                        </motion.div>
                                     ))}
                                     {filteredApplicants.length === 0 && (
-                                        <div className="col-span-3 bg-white rounded-xl border border-gray-200 p-12 text-center shadow-2xs">
+                                        <div className="col-span-3 bg-white rounded-2xl border border-gray-200 p-12 text-center shadow-2xs">
                                             <FaUserTie className="mx-auto text-4xl text-slate-200 mb-3 animate-pulse" />
                                             <h4 className="font-bold text-gray-700 text-sm">No Applicants Found</h4>
                                             <p className="text-xs text-gray-400 mt-1">Adjust filters or check back later as educators submit files.</p>
@@ -1457,36 +1573,57 @@ export default function JobsPage() {
 
                         {/* TAB 3: HIRING STATUS SETTINGS */}
                         {instTab === 'hiring-settings' && (
-                            <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm max-w-xl">
-                                <h3 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                                    <FaBuilding className="text-[var(--color-secondary)]" /> Recruiter Branding Details
+                            <div className="bg-white rounded-2xl border border-gray-200 p-6.5 shadow-sm max-w-2xl">
+                                <h3 className="text-sm font-bold text-gray-800 mb-2 flex items-center gap-2 oswald-font tracking-wide">
+                                    <FaBuilding className="text-[var(--color-secondary)] text-base" /> Recruiter Branding Details
                                 </h3>
-                                <p className="text-xs text-gray-400 mb-4 leading-relaxed font-semibold">
+                                <p className="text-xs text-gray-500 mb-6 leading-relaxed font-semibold">
                                     Set your current school status to control badge colors on listings and alert followers regarding hiring campaigns.
                                 </p>
 
                                 {institutionSettings && (
                                     <div className="space-y-4">
-                                        <div className="flex flex-col gap-1.5">
-                                            <span className="text-[10px] font-bold text-gray-500 uppercase">Hiring Status Badge</span>
-                                            <div className="grid grid-cols-2 gap-3.5">
+                                        <div className="flex flex-col gap-3">
+                                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Hiring Status Badge</span>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                 {([
-                                                    { key: 'Actively Hiring', color: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-                                                    { key: 'Hiring Soon', color: 'border-blue-200 bg-blue-50 text-blue-700' },
-                                                    { key: 'Position Filled', color: 'border-slate-200 bg-slate-50 text-slate-700' },
-                                                    { key: 'Recruitment Closed', color: 'border-red-200 bg-red-50 text-red-700' }
-                                                ] as const).map(badge => (
-                                                    <button
-                                                        key={badge.key}
-                                                        onClick={() => handleInstitutionHiringUpdate(badge.key)}
-                                                        className={`p-3 text-xs font-bold border rounded-xl text-center transition-all ${institutionSettings.hiringStatus === badge.key
-                                                                ? `${badge.color} border-2 shadow-sm`
-                                                                : 'border-gray-200 hover:bg-slate-50 text-gray-600'
+                                                    { key: 'Actively Hiring', label: 'Actively Hiring', icon: <FaFireAlt />, desc: 'All open vacancies accept applications. Priority applicant scoring enabled.', color: 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-emerald-100/50' },
+                                                    { key: 'Hiring Soon', label: 'Hiring Soon', icon: <FaClock />, desc: 'Pipelines are active. Future open listings are being drafted.', color: 'border-blue-500 bg-blue-50 text-blue-700 shadow-blue-100/50' },
+                                                    { key: 'Position Filled', label: 'Position Filled', icon: <FaCheckCircle />, desc: 'Vacancies are closed. Shortlisted candidates are selected.', color: 'border-slate-500 bg-slate-50 text-slate-700 shadow-slate-100/50' },
+                                                    { key: 'Recruitment Closed', label: 'Recruitment Closed', icon: <FaBan />, desc: 'Currently not accepting any new applications or profiles.', color: 'border-red-500 bg-red-50 text-red-700 shadow-red-100/50' }
+                                                ] as const).map(badge => {
+                                                    const isSelected = institutionSettings.hiringStatus === badge.key;
+                                                    return (
+                                                        <button
+                                                            key={badge.key}
+                                                            onClick={() => handleInstitutionHiringUpdate(badge.key)}
+                                                            className={`p-4 border rounded-2xl text-left transition-all duration-300 flex items-start gap-3.5 relative overflow-hidden group ${
+                                                                isSelected
+                                                                    ? `${badge.color} border-2 shadow-md`
+                                                                    : 'border-gray-200 hover:bg-slate-50/80 text-gray-600 hover:border-slate-300'
                                                             }`}
-                                                    >
-                                                        {badge.key}
-                                                    </button>
-                                                ))}
+                                                        >
+                                                            <span className={`p-2 rounded-xl text-sm transition ${
+                                                                isSelected 
+                                                                    ? 'bg-white shadow-3xs' 
+                                                                    : 'bg-slate-100 text-slate-500 group-hover:bg-white'
+                                                            }`}>
+                                                                {badge.icon}
+                                                            </span>
+                                                            <div className="min-w-0 flex-1">
+                                                                <h4 className="font-bold text-xs leading-none flex items-center gap-1.5">
+                                                                    {badge.label}
+                                                                    {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-current animate-ping" />}
+                                                                </h4>
+                                                                <p className={`text-[10px] leading-relaxed mt-1 font-medium ${
+                                                                    isSelected ? 'opacity-85' : 'text-gray-400'
+                                                                }`}>
+                                                                    {badge.desc}
+                                                                </p>
+                                                            </div>
+                                                        </button>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     </div>
@@ -1524,12 +1661,23 @@ export default function JobsPage() {
                             </div>
 
                             {/* Resume attachment verify */}
-                            <div className="flex items-center justify-between text-2xs p-2 border border-green-100 bg-green-50/50 rounded-lg">
-                                <span className="flex items-center gap-1.5 text-green-700 font-semibold">
-                                    <FaCheckCircle /> Attachment: {resumeData?.fileName}
-                                </span>
-                                <span className="text-gray-400 font-medium">Strength: {resumeData?.strengthScore}%</span>
-                            </div>
+                            {resumeData && resumeData.fileUrl ? (
+                                <div className="flex items-center justify-between text-2xs p-2 border border-green-100 bg-green-50/50 rounded-lg">
+                                    <span className="flex items-center gap-1.5 text-green-700 font-semibold">
+                                        <FaCheckCircle /> Attachment: {resumeData.fileName}
+                                    </span>
+                                    <span className="text-gray-400 font-medium">Strength: {resumeData.strengthScore}%</span>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-1.5 p-3 border border-amber-200 bg-amber-50/50 text-amber-800 rounded-lg text-2xs font-semibold">
+                                    <div className="flex items-center gap-1.5 text-amber-700">
+                                        <FaExclamationTriangle className="text-xs" /> No Resume Found
+                                    </div>
+                                    <p className="text-[10px] text-amber-600 leading-normal font-medium">
+                                        You haven't uploaded a resume yet. To apply, you need to upload a resume in the sidebar section.
+                                    </p>
+                                </div>
+                            )}
 
                             {/* Optional Cover letter text */}
                             <div className="flex flex-col gap-1">
@@ -1587,7 +1735,7 @@ export default function JobsPage() {
             <AnimatePresence>
                 {showResumePreview && resumeData && resumeData.fileUrl && (
                     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 sm:p-6">
-                        <motion.div 
+                        <motion.div
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.95 }}
@@ -1602,14 +1750,14 @@ export default function JobsPage() {
                                     <span className="text-xs font-bold text-gray-800 truncate">{resumeData.fileName}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <a 
-                                        href={resumeData.fileUrl} 
+                                    <a
+                                        href={resumeData.fileUrl}
                                         download={resumeData.fileName}
                                         className="text-xs font-bold text-gray-700 hover:text-[var(--color-primary)] px-3 py-1.5 bg-white border border-gray-200 rounded-lg shadow-2xs transition flex items-center gap-1.5"
                                     >
                                         <FaDownload /> Download
                                     </a>
-                                    <button 
+                                    <button
                                         onClick={() => setShowResumePreview(false)}
                                         className="text-xs font-bold text-gray-500 hover:text-gray-800 bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-2xs transition"
                                     >
@@ -1619,8 +1767,8 @@ export default function JobsPage() {
                             </div>
                             <div className="flex-1 bg-slate-100 relative">
                                 {resumeData.fileName.endsWith('.pdf') ? (
-                                    <iframe 
-                                        src={resumeData.fileUrl} 
+                                    <iframe
+                                        src={resumeData.fileUrl}
                                         className="w-full h-full border-0"
                                         title="Resume Preview"
                                     />
@@ -1631,8 +1779,8 @@ export default function JobsPage() {
                                         <p className="text-xs text-gray-400 mt-1.5 max-w-xs leading-normal">
                                             Inline previews are only available for PDF documents. Please download the file to view, or re-upload your resume as a PDF.
                                         </p>
-                                        <a 
-                                            href={resumeData.fileUrl} 
+                                        <a
+                                            href={resumeData.fileUrl}
                                             download={resumeData.fileName}
                                             className="mt-4 bg-[var(--color-primary)] hover:bg-[var(--color-secondary)] text-white text-xs font-bold px-5 py-2.5 rounded-lg shadow transition"
                                         >
@@ -1653,7 +1801,7 @@ export default function JobsPage() {
                     const isSaved = savedJobIds.includes(activeJob.id);
                     const hasApplied = applications.some(a => a.jobId === activeJob.id && a.teacherId === activeTeacherId);
                     const matchRating = teacherSettings ? calculateMatchScore(activeJob, teacherSettings).score : null;
-                    
+
                     const schoolInitial = activeJob.schoolInitial || activeJob.school.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
                     const getSchoolColor = (name: string) => {
                         const colors = ['#1e40af', '#0d9488', '#b45309', '#7c3aed', '#dc2626', '#0891b2', '#059669', '#e11d48'];
@@ -1716,7 +1864,7 @@ export default function JobsPage() {
                                             <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Swipe or use arrows to view next jobs</p>
                                         </div>
                                     </div>
-                                    <button 
+                                    <button
                                         onClick={() => setSelectedJobIndex(null)}
                                         className="text-gray-400 hover:text-red-500 hover:bg-slate-100 p-1.5 rounded-full transition-colors"
                                     >
@@ -1768,7 +1916,7 @@ export default function JobsPage() {
                                             {/* Left Column: School profile + Key stats */}
                                             <div className="md:col-span-2 p-6 flex flex-col gap-5">
                                                 <div className="flex flex-col items-center text-center gap-3">
-                                                    <div 
+                                                    <div
                                                         className="w-18 h-18 rounded-2xl flex items-center justify-center text-white font-extrabold text-2xl shadow-md border-4 border-white"
                                                         style={{ backgroundColor: schoolColor }}
                                                     >
@@ -1860,7 +2008,7 @@ export default function JobsPage() {
                                                         </h5>
                                                         <div className="flex flex-wrap gap-1.5">
                                                             {activeJob.skillsRequired.map((skill, index) => (
-                                                                <span 
+                                                                <span
                                                                     key={index}
                                                                     className="text-[10px] font-bold px-3 py-1 rounded bg-blue-50 text-[var(--color-primary)] border border-blue-100/50"
                                                                 >
@@ -1887,11 +2035,10 @@ export default function JobsPage() {
                                                         setSlideDirection(i > selectedJobIndex ? 1 : -1);
                                                         setSelectedJobIndex(i);
                                                     }}
-                                                    className={`w-2 h-2 rounded-full transition-all duration-200 ${
-                                                        i === selectedJobIndex 
-                                                            ? 'bg-[var(--color-primary)] w-4' 
+                                                    className={`w-2 h-2 rounded-full transition-all duration-200 ${i === selectedJobIndex
+                                                            ? 'bg-[var(--color-primary)] w-4'
                                                             : 'bg-gray-200 hover:bg-gray-300'
-                                                    }`}
+                                                        }`}
                                                     title={`Go to Job ${i + 1}`}
                                                 />
                                             ))}
@@ -1908,11 +2055,10 @@ export default function JobsPage() {
                                     <div className="flex items-center gap-3">
                                         <button
                                             onClick={() => handleToggleSave(activeJob.id)}
-                                            className={`text-xs font-bold px-4 py-2 border rounded-xl transition flex items-center gap-1.5 shadow-2xs ${
-                                                isSaved
+                                            className={`text-xs font-bold px-4 py-2 border rounded-xl transition flex items-center gap-1.5 shadow-2xs ${isSaved
                                                     ? 'border-[var(--color-secondary)]/30 bg-green-50 text-[var(--color-secondary)]'
                                                     : 'border-gray-200 bg-white text-gray-600 hover:bg-slate-50 hover:text-[var(--color-primary)]'
-                                            }`}
+                                                }`}
                                         >
                                             {isSaved ? <FaBookmark className="text-xs" /> : <FaRegBookmark className="text-xs" />}
                                             <span>{isSaved ? 'Saved' : 'Save'}</span>
@@ -1962,8 +2108,8 @@ export default function JobsPage() {
                 onClose={() => setJobToPause(null)}
                 onConfirm={executePauseJob}
                 title={jobToPause?.status === 'paused' ? 'Resume Job Listing' : 'Pause Job Listing'}
-                message={jobToPause?.status === 'paused' 
-                    ? 'Are you sure you want to resume this job listing? It will become visible to teachers again.' 
+                message={jobToPause?.status === 'paused'
+                    ? 'Are you sure you want to resume this job listing? It will become visible to teachers again.'
                     : 'Are you sure you want to pause this job listing? It will be hidden from teachers.'
                 }
                 confirmText={jobToPause?.status === 'paused' ? 'Resume' : 'Pause'}

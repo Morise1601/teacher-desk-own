@@ -1,8 +1,8 @@
 // app/jobs/jobsRepository.ts
 
-import { 
-    Job, Application, Resume, CommunicationLog, 
-    JobNotification, TeacherSettings, InstitutionSettings 
+import {
+    Job, Application, Resume, CommunicationLog,
+    JobNotification, TeacherSettings, InstitutionSettings
 } from './types';
 import { supabase } from '@/lib/supabase';
 
@@ -63,15 +63,15 @@ export const jobsRepository = {
 
     // Fetch ALL jobs for the logged-in institution (including paused/archived).
     // Used by the institution view only — teachers always use getJobs which hides paused.
-    getInstitutionJobs: async (): Promise<Job[]> => {
+    getInstitutionJobs: async (fallbackInstId?: string): Promise<Job[]> => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return [];
+            const instId = user ? user.id : (fallbackInstId || 'institution-id-dummy');
 
             const { data: dbJobs, error } = await supabase
                 .from('posted_jobs')
                 .select('*')
-                .eq('institution_id', user.id)
+                .eq('institution_id', instId)
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -234,12 +234,13 @@ export const jobsRepository = {
             }
         } catch (err: any) {
             console.error("Failed to save job in Supabase:", err?.message || err?.details || err);
+            throw new Error(err?.message || err?.details || err || 'Failed to save job post in database.');
         }
 
         // Fallback to local storage
         const jobs = await jobsRepository.getJobs();
         const schoolInitial = jobData.school.split(' ').map(w => w[0]).join('').substring(0, 3).toUpperCase();
-        
+
         const colors = ['#143c64', '#12501b', '#b45309', '#7c3aed', '#dc2626', '#0891b2', '#059669', '#e11d48'];
         const randomColor = colors[Math.floor(Math.random() * colors.length)];
 
@@ -256,7 +257,7 @@ export const jobsRepository = {
             createdAt: new Date().toISOString()
         };
 
-        const isDuplicate = jobs.some(j => 
+        const isDuplicate = jobs.some(j =>
             j.title.toLowerCase() === newJob.title.toLowerCase() &&
             j.school.toLowerCase() === newJob.school.toLowerCase() &&
             j.location.toLowerCase() === newJob.location.toLowerCase() &&
@@ -378,7 +379,7 @@ export const jobsRepository = {
             const saved = getStorageItem<Record<string, string[]>>('td_saved_jobs_map', {});
             const teacherSaved = saved[teacherId] || [];
             isSaved = teacherSaved.includes(jobId);
-            
+
             let newSaved: string[];
             if (isSaved) {
                 newSaved = teacherSaved.filter(id => id !== jobId);
@@ -387,7 +388,7 @@ export const jobsRepository = {
                 newSaved = [...teacherSaved, jobId];
                 isSaved = true;
             }
-            
+
             saved[teacherId] = newSaved;
             setStorageItem('td_saved_jobs_map', saved);
         }
@@ -403,7 +404,7 @@ export const jobsRepository = {
     saveResume: async (teacherId: string, fileData: { fileName: string; fileSize: number; base64: string }): Promise<Resume> => {
         const score = calculateResumeStrength(fileData.fileName, fileData.base64);
         const newResume: Resume = {
-            fileUrl: fileData.base64, 
+            fileUrl: fileData.base64,
             fileName: fileData.fileName,
             fileSize: fileData.fileSize,
             base64: fileData.base64,
@@ -414,7 +415,7 @@ export const jobsRepository = {
         const resumes = getStorageItem<Record<string, Resume>>('td_resumes_map', {});
         resumes[teacherId] = newResume;
         setStorageItem('td_resumes_map', resumes);
-        
+
         const notif: Omit<JobNotification, 'id' | 'isRead' | 'createdAt'> = {
             title: 'Resume Strength Calculated',
             message: `Your resume "${fileData.fileName}" scored a strength rating of ${score}%. Complete other sections to reach 100%.`,
@@ -433,67 +434,80 @@ export const jobsRepository = {
 
     // --- JOB APPLICATIONS ---
     getApplications: async (cachedJobs?: Job[]): Promise<Application[]> => {
+        let dbApps: any[] = [];
         try {
-            const { data: dbApps, error } = await supabase
+            const { data, error } = await supabase
                 .from('job_applications')
                 .select('*')
                 .order('created_at', { ascending: false });
-
-            if (error) throw error;
-
-            if (dbApps && dbApps.length > 0) {
-                const jobIds = Array.from(new Set(dbApps.map(a => a.job_id).filter(Boolean)));
-                const teacherIds = Array.from(new Set(dbApps.map(a => a.teacher_id).filter(Boolean)));
-
-                const [jobs, teachers] = await Promise.all([
-                    cachedJobs || jobsRepository.getJobs(),
-                    supabase.from('teachers').select('auth_id, full_name, email').in('auth_id', teacherIds)
-                ]);
-
-                const jobsMap = new Map(jobs.map(j => [j.id, j]));
-                const teachersMap = new Map(teachers.data?.map(t => [t.auth_id, t]) || []);
-
-                return dbApps.map((a: any) => {
-                    const job = jobsMap.get(a.job_id);
-                    const teacher = teachersMap.get(a.teacher_id);
-                    const score = job ? 85 : 50; 
-
-                    return {
-                        id: a.id,
-                        jobId: a.job_id,
-                        jobTitle: job?.title || 'Unknown Position',
-                        schoolName: job?.school || 'Unknown School',
-                        teacherId: a.teacher_id,
-                        teacherName: teacher?.full_name || 'Educator',
-                        teacherEmail: teacher?.email || '',
-                        status: (a.status ? a.status.charAt(0).toUpperCase() + a.status.slice(1) : 'Applied') as any,
-                        coverLetter: a.cover_letter || '',
-                        resumeUrl: a.resume_url || '',
-                        resumeName: a.resume_name || 'Resume.pdf',
-                        resumeSize: 0,
-                        appliedAt: a.created_at || new Date().toISOString(),
-                        updatedAt: a.updated_at || new Date().toISOString(),
-                        notes: [], 
-                        matchScore: score,
-                        matchDetails: []
-                    };
-                });
-            }
+            if (!error && data) dbApps = data;
         } catch (err) {
-            console.error("Failed to load applications from Supabase, falling back to local storage:", err);
+            console.error("Failed to load applications from Supabase:", err);
         }
-        return getStorageItem<Application[]>('td_applications_list', []);
+
+        const localApps = getStorageItem<Application[]>('td_applications_list', []);
+        const dbAppsMapped: Application[] = [];
+
+        if (dbApps && dbApps.length > 0) {
+            const teacherIds = Array.from(new Set(dbApps.map(a => a.teacher_id).filter(Boolean)));
+            const [jobs, teachers] = await Promise.all([
+                cachedJobs || jobsRepository.getJobs(),
+                supabase.from('teachers').select('auth_id, full_name, email').in('auth_id', teacherIds)
+            ]);
+
+            const jobsMap = new Map(jobs.map(j => [j.id, j]));
+            const teachersMap = new Map(teachers.data?.map(t => [t.auth_id, t]) || []);
+
+            dbApps.forEach((a: any) => {
+                const job = jobsMap.get(a.job_id);
+                const teacher = teachersMap.get(a.teacher_id);
+                const score = job ? 85 : 50;
+
+                dbAppsMapped.push({
+                    id: a.id,
+                    jobId: a.job_id,
+                    jobTitle: job?.title || 'Unknown Position',
+                    schoolName: job?.school || 'Unknown School',
+                    teacherId: a.teacher_id,
+                    teacherName: teacher?.full_name || 'Educator',
+                    teacherEmail: teacher?.email || '',
+                    status: (a.status ? a.status.charAt(0).toUpperCase() + a.status.slice(1) : 'Applied') as any,
+                    coverLetter: a.cover_letter || '',
+                    resumeUrl: a.resume_url || '',
+                    resumeName: a.resume_name || 'Resume.pdf',
+                    resumeSize: 0,
+                    appliedAt: a.created_at || new Date().toISOString(),
+                    updatedAt: a.updated_at || new Date().toISOString(),
+                    notes: [],
+                    matchScore: score,
+                    matchDetails: []
+                });
+            });
+        }
+
+        const merged: Application[] = [...localApps];
+        const seen = new Set(localApps.map(a => `${a.jobId}_${a.teacherId}`));
+
+        dbAppsMapped.forEach(app => {
+            const key = `${app.jobId}_${app.teacherId}`;
+            if (!seen.has(key)) {
+                merged.push(app);
+                seen.add(key);
+            }
+        });
+
+        return merged;
     },
 
     saveApplications: async (apps: Application[]): Promise<void> => {
         setStorageItem('td_applications_list', apps);
     },
 
-    applyJob: async (applicationData: { 
-        jobId: string; 
-        teacherId: string; 
-        teacherName: string; 
-        teacherEmail: string; 
+    applyJob: async (applicationData: {
+        jobId: string;
+        teacherId: string;
+        teacherName: string;
+        teacherEmail: string;
         coverLetter?: string;
     }): Promise<Application> => {
         const jobs = await jobsRepository.getJobs();
@@ -577,7 +591,7 @@ export const jobsRepository = {
         try {
             const { error } = await supabase
                 .from('job_applications')
-                .update({ 
+                .update({
                     status: status.toLowerCase(),
                     updated_at: new Date().toISOString()
                 })
@@ -595,7 +609,7 @@ export const jobsRepository = {
         const app = apps[index];
         app.status = status;
         app.updatedAt = new Date().toISOString();
-        
+
         apps[index] = app;
         await jobsRepository.saveApplications(apps);
 
@@ -732,7 +746,7 @@ export const jobsRepository = {
 
         const allNotifs = getStorageItem<Record<string, JobNotification[]>>('td_notifications_map', {});
         const userNotifs = allNotifs[userId] || [];
-        
+
         const newNotif: JobNotification = {
             ...notif,
             id: Math.random().toString(36).substring(2, 9),
@@ -761,7 +775,7 @@ export const jobsRepository = {
 
         const allNotifs = getStorageItem<Record<string, JobNotification[]>>('td_notifications_map', {});
         const userNotifs = allNotifs[userId] || [];
-        
+
         userNotifs.forEach(n => { n.isRead = true; });
         allNotifs[userId] = userNotifs;
         setStorageItem('td_notifications_map', allNotifs);
@@ -839,7 +853,7 @@ function calculateMatchScore(job: Job, settings: TeacherSettings): { score: numb
     }
 
     // 3. Location Match (Weight: 10%)
-    if (job.location.toLowerCase().includes(settings.preferredLocation.toLowerCase()) || 
+    if (job.location.toLowerCase().includes(settings.preferredLocation.toLowerCase()) ||
         settings.preferredLocation.toLowerCase().includes(job.location.toLowerCase())) {
         score += 10;
         details.push('Preferred location matches school location (+10%)');
@@ -864,7 +878,7 @@ function calculateMatchScore(job: Job, settings: TeacherSettings): { score: numb
     }
 
     // 5. Qualification Match (Weight: 10%)
-    if (settings.qualification.toLowerCase() === job.qualification.toLowerCase() || 
+    if (settings.qualification.toLowerCase() === job.qualification.toLowerCase() ||
         settings.qualification.includes('M.Ed') && job.qualification.includes('B.Ed')) {
         score += 10;
         details.push('Qualification matches or exceeds required grade (+10%)');
