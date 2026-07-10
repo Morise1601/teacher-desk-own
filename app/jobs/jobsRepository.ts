@@ -100,6 +100,22 @@ export const jobsRepository = {
             const schoolName = instMap.get(j.institution_id) || 'Institution';
             const schoolInitial = schoolName.split(' ').map((w: string) => w[0]).join('').substring(0, 3).toUpperCase();
             const colorIndex = schoolInitial.length > 0 ? schoolInitial.charCodeAt(0) % colors.length : 0;
+            
+            // Extract metadata from requirements if present
+            let requirementsStr = j.requirements || '';
+            let metadata: any = {};
+            const metadataSeparator = '\n\n---METADATA---\n';
+            const separatorIndex = requirementsStr.indexOf(metadataSeparator);
+            if (separatorIndex !== -1) {
+                try {
+                    const metadataStr = requirementsStr.substring(separatorIndex + metadataSeparator.length);
+                    metadata = JSON.parse(metadataStr);
+                    requirementsStr = requirementsStr.substring(0, separatorIndex);
+                } catch (e) {
+                    console.error('Failed to parse job metadata:', e);
+                }
+            }
+
             return {
                 id: j.id,
                 title: j.title || '',
@@ -107,25 +123,25 @@ export const jobsRepository = {
                 schoolInitial,
                 schoolColor: colors[colorIndex],
                 location: j.location || '',
-                state: j.state || '',
+                state: metadata.state || j.state || '',
                 salary: j.salary_range || 'Competitive',
                 salaryMin: j.salary_min || 0,
                 experience: j.experience_required || 'Fresher',
                 subject: j.subject || '',
-                qualification: 'M.Ed',
-                board: j.board || 'CBSE',
+                qualification: metadata.qualification || 'M.Ed',
+                board: metadata.board || j.board || 'CBSE',
                 jobType: j.employment_type || 'Full-time',
-                gradeLevel: j.gradeLevel || 'High School',
+                gradeLevel: metadata.gradeLevel || j.gradeLevel || 'High School',
                 postedDate: 'Today',
                 postedDaysAgo: 0,
                 isVerified: true,
-                isFeatured: false,
+                isFeatured: metadata.isFeatured || false,
                 rating: 4.5,
                 applicants: 0,
                 tags: j.skills_required || [],
                 skillsRequired: j.skills_required || [],
                 description: j.description || '',
-                requirements: j.requirements || '',
+                requirements: requirementsStr,
                 institutionId: j.institution_id || '',
                 deadline: j.deadline || '',
                 openPositions: j.positions_open || 1,
@@ -167,6 +183,16 @@ export const jobsRepository = {
                 .maybeSingle();
             if (inst?.name) schoolName = inst.name;
 
+            // Pack metadata into requirements column
+            const metadata = {
+                isFeatured: jobData.isFeatured || false,
+                board: jobData.board || 'CBSE',
+                state: jobData.state || '',
+                gradeLevel: jobData.gradeLevel || 'High School',
+                qualification: jobData.qualification || 'M.Ed'
+            };
+            const packedRequirements = `${jobData.requirements || ''}\n\n---METADATA---\n${JSON.stringify(metadata)}`;
+
             // Only include columns that actually exist in posted_jobs.
             // Columns NOT in schema: state, board — omitted intentionally.
             const dbPayload = {
@@ -174,7 +200,7 @@ export const jobsRepository = {
                 title: jobData.title,
                 subject: jobData.subject,
                 description: jobData.description,
-                requirements: jobData.requirements,
+                requirements: packedRequirements,
                 experience_required: jobData.experience,
                 salary_range: jobData.salary,
                 salary_min: jobData.salaryMin || 0,
@@ -206,25 +232,25 @@ export const jobsRepository = {
                     schoolInitial,
                     schoolColor: randomColor,
                     location: newDbJob.location,
-                    state: newDbJob.state || '',
+                    state: jobData.state || '',
                     salary: newDbJob.salary_range || 'Competitive',
                     salaryMin: newDbJob.salary_min || 0,
                     experience: newDbJob.experience_required || 'Fresher',
                     subject: newDbJob.subject,
                     qualification: jobData.qualification || 'M.Ed',
-                    board: newDbJob.board || 'CBSE',
+                    board: jobData.board || 'CBSE',
                     jobType: newDbJob.employment_type || 'Full-time',
                     gradeLevel: jobData.gradeLevel || 'High School',
                     postedDate: 'Today',
                     postedDaysAgo: 0,
                     applicants: 0,
                     isVerified: true,
-                    isFeatured: false,
+                    isFeatured: jobData.isFeatured || false,
                     rating: 4.5,
                     tags: newDbJob.skills_required || [],
                     skillsRequired: newDbJob.skills_required || [],
                     description: newDbJob.description || '',
-                    requirements: newDbJob.requirements || '',
+                    requirements: jobData.requirements || '',
                     institutionId: newDbJob.institution_id,
                     deadline: newDbJob.deadline || '',
                     openPositions: newDbJob.positions_open || 1,
@@ -282,7 +308,60 @@ export const jobsRepository = {
             if (updatedFields.title !== undefined) dbPayload.title = updatedFields.title;
             if (updatedFields.subject !== undefined) dbPayload.subject = updatedFields.subject;
             if (updatedFields.description !== undefined) dbPayload.description = updatedFields.description;
-            if (updatedFields.requirements !== undefined) dbPayload.requirements = updatedFields.requirements;
+
+            // Handle metadata merging if requirements or metadata fields are changed
+            const hasMetadataOrRequirementsChange = 
+                updatedFields.requirements !== undefined ||
+                updatedFields.isFeatured !== undefined ||
+                updatedFields.board !== undefined ||
+                updatedFields.state !== undefined ||
+                updatedFields.gradeLevel !== undefined ||
+                updatedFields.qualification !== undefined;
+
+            if (hasMetadataOrRequirementsChange) {
+                // Fetch the existing job record to read current requirements/metadata
+                const { data: existingJob, error: fetchErr } = await supabase
+                    .from('posted_jobs')
+                    .select('requirements')
+                    .eq('id', id)
+                    .single();
+                
+                if (fetchErr) throw fetchErr;
+
+                let existingRequirements = '';
+                let existingMetadata: any = {};
+
+                if (existingJob && existingJob.requirements) {
+                    const requirementsStr = existingJob.requirements;
+                    const metadataSeparator = '\n\n---METADATA---\n';
+                    const separatorIndex = requirementsStr.indexOf(metadataSeparator);
+                    if (separatorIndex !== -1) {
+                        try {
+                            const metadataStr = requirementsStr.substring(separatorIndex + metadataSeparator.length);
+                            existingMetadata = JSON.parse(metadataStr);
+                            existingRequirements = requirementsStr.substring(0, separatorIndex);
+                        } catch (e) {
+                            console.error('Failed to parse existing metadata:', e);
+                            existingRequirements = requirementsStr;
+                        }
+                    } else {
+                        existingRequirements = requirementsStr;
+                    }
+                }
+
+                // Merge with updated fields
+                const finalRequirements = updatedFields.requirements !== undefined ? updatedFields.requirements : existingRequirements;
+                const finalMetadata = {
+                    isFeatured: updatedFields.isFeatured !== undefined ? updatedFields.isFeatured : (existingMetadata.isFeatured || false),
+                    board: updatedFields.board !== undefined ? updatedFields.board : (existingMetadata.board || 'CBSE'),
+                    state: updatedFields.state !== undefined ? updatedFields.state : (existingMetadata.state || ''),
+                    gradeLevel: updatedFields.gradeLevel !== undefined ? updatedFields.gradeLevel : (existingMetadata.gradeLevel || 'High School'),
+                    qualification: updatedFields.qualification !== undefined ? updatedFields.qualification : (existingMetadata.qualification || 'M.Ed')
+                };
+
+                dbPayload.requirements = `${finalRequirements || ''}\n\n---METADATA---\n${JSON.stringify(finalMetadata)}`;
+            }
+
             if (updatedFields.experience !== undefined) dbPayload.experience_required = updatedFields.experience;
             if (updatedFields.salary !== undefined) dbPayload.salary_range = updatedFields.salary;
             if (updatedFields.salaryMin !== undefined) dbPayload.salary_min = updatedFields.salaryMin;
