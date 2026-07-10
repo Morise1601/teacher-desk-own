@@ -13,6 +13,29 @@ import { Input } from "@/components/ui/input";
 import { FaPaperclip, FaImage, FaPoll, FaChevronDown, FaTimes, FaGlobe, FaUsers, FaBuilding, FaGraduationCap, FaUserTag } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import { EmojiPicker } from '@/components/ui/EmojiPicker';
+import ImageCropper from '@/components/ui/ImageCropper';
+
+const formatBytes = (bytes: number, decimals = 2) => {
+    if (!bytes) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
+
+const getImageDimensions = (base64: string): Promise<{ width: number; height: number }> => {
+    return new Promise((resolve) => {
+        const img = new globalThis.Image();
+        img.onload = () => {
+            resolve({ width: img.width, height: img.height });
+        };
+        img.onerror = () => {
+            resolve({ width: 1280, height: 720 });
+        };
+        img.src = base64;
+    });
+};
 
 export default function PostJobCreator() {
     const [profile, setProfile] = useState<any>(null);
@@ -26,9 +49,21 @@ export default function PostJobCreator() {
     const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
 
     // Image upload state
-    const [selectedImages, setSelectedImages] = useState<{ base64: string; name: string }[]>([]);
+    interface SelectedImage {
+        base64: string;
+        name: string;
+        size: number;
+        type: string;
+        width: number;
+        height: number;
+    }
+    const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
     const [imagePreviews, setImagePreviews] = useState<string[]>([]);
     const imageInputRef = useRef<HTMLInputElement>(null);
+
+    // Cropping queue state
+    const [croppingQueue, setCroppingQueue] = useState<Array<{ file: File; base64: string }>>([]);
+    const [currentCroppingIndex, setCurrentCroppingIndex] = useState<number | null>(null);
 
     // PDF resource state
     const [selectedPDF, setSelectedPDF] = useState<{ base64: string; name: string } | null>(null);
@@ -129,21 +164,49 @@ export default function PostJobCreator() {
             return;
         }
 
+        const validFiles: File[] = [];
         Array.from(files).forEach(file => {
-            if (file.size > 5 * 1024 * 1024) {
-                toast.error(`${file.name} exceeds the 5MB size limit.`);
-                return;
-            }
-            if (!['image/jpeg', 'image/png', 'image/jpg', 'image/webp'].includes(file.type)) {
-                toast.error(`${file.name} is not a supported image format.`);
+            const ext = file.name.split('.').pop()?.toLowerCase();
+            const isValidFormat = ['jpg', 'jpeg', 'png'].includes(ext || '') && ['image/jpeg', 'image/png'].includes(file.type);
+            
+            if (!isValidFormat) {
+                toast.error(`${file.name} is not a supported image format. Only JPG and PNG are allowed.`);
                 return;
             }
 
+            if (file.size > 2 * 1024 * 1024) {
+                toast.error(`${file.name} exceeds the 2MB size limit.`);
+                return;
+            }
+
+            validFiles.push(file);
+        });
+
+        if (validFiles.length === 0) {
+            if (imageInputRef.current) imageInputRef.current.value = '';
+            return;
+        }
+
+        let loadedCount = 0;
+        const newQueueItems: Array<{ file: File; base64: string }> = [];
+
+        validFiles.forEach(file => {
             const reader = new FileReader();
             reader.onloadend = () => {
                 const base64 = reader.result as string;
-                setSelectedImages(prev => [...prev, { base64, name: file.name }]);
-                setImagePreviews(prev => [...prev, base64]);
+                newQueueItems.push({ file, base64 });
+                loadedCount++;
+
+                if (loadedCount === validFiles.length) {
+                    setCroppingQueue(prev => {
+                        const updated = [...prev, ...newQueueItems];
+                        const startIndex = currentCroppingIndex === null ? prev.length : currentCroppingIndex;
+                        if (currentCroppingIndex === null) {
+                            setCurrentCroppingIndex(prev.length);
+                        }
+                        return updated;
+                    });
+                }
             };
             reader.readAsDataURL(file);
         });
@@ -374,7 +437,9 @@ export default function PostJobCreator() {
                 visibility,
                 classroomId: visibility === 'classroom' ? selectedClassroomId : null,
                 institutionId: profile?.role === 'institution' ? profile.id : null,
-                files: postType === 'image' ? selectedImages : (postType === 'resource' && selectedPDF ? [selectedPDF] : []),
+                files: postType === 'image' 
+                    ? selectedImages.map(img => ({ base64: img.base64, name: img.name })) 
+                    : (postType === 'resource' && selectedPDF ? [selectedPDF] : []),
                 poll: postType === 'poll' ? {
                     question: pollQuestion.trim(),
                     options: pollOptions.filter(o => o.trim() !== ''),
@@ -525,24 +590,41 @@ export default function PostJobCreator() {
 
             {/* Render selected attachment previews */}
             {imagePreviews.length > 0 && (
-                <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="flex flex-col gap-3 mb-4">
                     {imagePreviews.map((preview, index) => (
-                        <div key={index} className="relative aspect-video rounded-lg overflow-hidden border border-gray-100 group">
-                            <img src={preview} alt="upload preview" className="w-full h-full object-cover" />
-                            
-                            {/* Tag people button overlay */}
+                        <div key={index} className="flex gap-4 p-3 bg-gray-50 border border-gray-100 rounded-xl items-center">
+                            {/* Left side: Image Preview */}
+                            <div className="relative w-40 aspect-video rounded-lg overflow-hidden border border-gray-200 bg-white group flex-shrink-0">
+                                <img src={preview} alt="upload preview" className="w-full h-full object-cover" />
+                                
+                                {/* Tag people button overlay */}
+                                <button
+                                    type="button"
+                                    onClick={() => openTaggingModal(index)}
+                                    className="absolute bottom-1.5 left-1.5 bg-black/60 text-white rounded px-2 py-0.5 text-[9px] hover:bg-black transition-all font-bold flex items-center gap-1 shadow-sm z-10"
+                                >
+                                    <FaUserTag className="text-[10px]" />
+                                    <span>{getTagsCountForImage(index) > 0 ? `${getTagsCountForImage(index)} Tagged` : 'Tag People'}</span>
+                                </button>
+                            </div>
+
+                            {/* Right side: Image Properties & Actions */}
+                            <div className="flex-1 min-w-0 flex flex-col justify-center py-1">
+                                <p className="font-bold text-xs text-gray-700 truncate mb-1" title={selectedImages[index]?.name}>
+                                    {selectedImages[index]?.name}
+                                </p>
+                                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                                    <p><span className="text-gray-300 font-medium">Size:</span> <span className="text-gray-500">{formatBytes(selectedImages[index]?.size)}</span></p>
+                                    <p><span className="text-gray-300 font-medium">Format:</span> <span className="text-gray-500">{selectedImages[index]?.type.split('/').pop()?.toUpperCase()}</span></p>
+                                    <p><span className="text-gray-300 font-medium">Dimens:</span> <span className="text-gray-500">{selectedImages[index]?.width} × {selectedImages[index]?.height} px</span></p>
+                                </div>
+                            </div>
+
+                            {/* Remove button */}
                             <button
                                 type="button"
-                                onClick={() => openTaggingModal(index)}
-                                className="absolute bottom-1 left-1 bg-black/60 text-white rounded px-2 py-0.5 text-[9px] hover:bg-black transition-all font-bold flex items-center gap-1 shadow-sm"
-                            >
-                                <FaUserTag className="text-[10px]" />
-                                <span>{getTagsCountForImage(index) > 0 ? `${getTagsCountForImage(index)} Tagged` : 'Tag People'}</span>
-                            </button>
-
-                            <button
                                 onClick={() => handleRemoveImage(index)}
-                                className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 hover:bg-black transition-colors"
+                                className="bg-white hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-full p-2.5 transition-colors flex-shrink-0 border border-gray-100 hover:border-red-100 shadow-sm"
                             >
                                 <FaTimes className="text-xs" />
                             </button>
@@ -985,6 +1067,55 @@ export default function PostJobCreator() {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {currentCroppingIndex !== null && croppingQueue[currentCroppingIndex] && (
+                <ImageCropper
+                    image={croppingQueue[currentCroppingIndex].base64}
+                    aspectRatio={16 / 9}
+                    onCrop={async (croppedBlob) => {
+                        const currentItem = croppingQueue[currentCroppingIndex];
+                        const reader = new FileReader();
+                        reader.onloadend = async () => {
+                            const croppedBase64 = reader.result as string;
+                            const dimensions = await getImageDimensions(croppedBase64);
+
+                            let newName = currentItem.file.name;
+                            const dotIndex = newName.lastIndexOf('.');
+                            if (dotIndex !== -1) {
+                                newName = newName.substring(0, dotIndex) + '_cropped.jpg';
+                            } else {
+                                newName = newName + '_cropped.jpg';
+                            }
+
+                            setSelectedImages(prev => [...prev, {
+                                base64: croppedBase64,
+                                name: newName,
+                                size: croppedBlob.size,
+                                type: croppedBlob.type,
+                                width: dimensions.width,
+                                height: dimensions.height
+                            }]);
+                            setImagePreviews(prev => [...prev, croppedBase64]);
+
+                            if (currentCroppingIndex < croppingQueue.length - 1) {
+                                setCurrentCroppingIndex(currentCroppingIndex + 1);
+                            } else {
+                                setCroppingQueue([]);
+                                setCurrentCroppingIndex(null);
+                            }
+                        };
+                        reader.readAsDataURL(croppedBlob);
+                    }}
+                    onCancel={() => {
+                        if (currentCroppingIndex < croppingQueue.length - 1) {
+                            setCurrentCroppingIndex(currentCroppingIndex + 1);
+                        } else {
+                            setCroppingQueue([]);
+                            setCurrentCroppingIndex(null);
+                        }
+                    }}
+                />
+            )}
         </motion.div>
     );
 }

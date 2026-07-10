@@ -9,14 +9,14 @@ import { randomUUID } from 'crypto';
  */
 function validateImage(fileName: string, base64Str: string) {
   const ext = fileName.split('.').pop()?.toLowerCase();
-  const allowed = ['jpg', 'jpeg', 'png', 'webp'];
+  const allowed = ['jpg', 'jpeg', 'png'];
   if (!ext || !allowed.includes(ext)) {
-    throw new Error(`Unsupported image format: .${ext}. Supported: JPG, JPEG, PNG, WEBP`);
+    throw new Error(`Unsupported image format: .${ext}. Supported: JPG, JPEG, PNG`);
   }
   // Base64 size estimation
   const sizeInBytes = (base64Str.length * 3) / 4;
-  if (sizeInBytes > 5 * 1024 * 1024) {
-    throw new Error("Image file size exceeds maximum limit of 5MB.");
+  if (sizeInBytes > 2 * 1024 * 1024) {
+    throw new Error("Image file size exceeds maximum limit of 2MB.");
   }
 }
 
