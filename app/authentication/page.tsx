@@ -45,7 +45,7 @@ const AuthContent = () => {
             >
                 {/* Left/Side Panel */}
                 <motion.div
-                    className={`${activeForm === 'login' ? 'md:w-[40%]' : 'md:w-1/2'} h-full hidden md:flex flex-col relative overflow-hidden transition-all duration-500`}
+                    className='md:w-1/2 h-full hidden md:flex flex-col relative overflow-hidden transition-all duration-500'
                 >
                     {activeForm === 'teacher_signup' ? (
                         <div className='relative h-full w-full'>
@@ -162,7 +162,7 @@ const AuthContent = () => {
                                         The Global Network<br />
                                         for <span className='text-emerald-400'>Educators</span>
                                     </h1>
-                                    <div className='w-10 h-[3px] bg-emerald-400 mt-4 mb-5 rounded-full' />
+                                    <div className='w-20 h-[3px] bg-gradient-to-r from-emerald-400 via-emerald-400/80 to-transparent mt-4 mb-5 rounded-l-full' />
                                     <p className='outfit-font text-[13.5px] text-gray-300 leading-relaxed max-w-xs font-normal'>
                                         Connect with teachers, share knowledge, discover opportunities and grow together worldwide.
                                     </p>
@@ -176,7 +176,7 @@ const AuthContent = () => {
                                     initial={{ y: 20, opacity: 0 }}
                                     animate={{ y: 0, opacity: 1 }}
                                     transition={{ duration: 0.7, delay: 0.6 }}
-                                    className='grid grid-cols-4 gap-3 px-8 pb-8 pt-5 border-t border-white/10'
+                                    className='grid grid-cols-4 gap-3 px-8 pb-8 pt-5'
                                 >
                                     {[
                                         {
@@ -221,13 +221,13 @@ const AuthContent = () => {
                                             initial={{ opacity: 0, y: 10 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             transition={{ delay: 0.7 + i * 0.1 }}
-                                            className='flex flex-col items-center text-center gap-2'
+                                            className='flex flex-col items-center text-center gap-2 px-2 border-r border-white/10 last:border-r-0'
                                         >
                                             <div className='text-emerald-400'>
                                                 {item.icon}
                                             </div>
-                                            <p className='text-white text-[11px] font-semibold sora-font'>{item.title}</p>
-                                            <p className='text-gray-400 text-[9px] outfit-font leading-tight'>{item.desc}</p>
+                                            <p className='text-white text-[14px] font-semibold sora-font'>{item.title}</p>
+                                            <p className='text-gray-400 text-[13px] outfit-font leading-tight'>{item.desc}</p>
                                         </motion.div>
                                     ))}
                                 </motion.div>
@@ -241,7 +241,7 @@ const AuthContent = () => {
                     initial={{ x: 80, opacity: 0 }}
                     animate={{ x: 0, opacity: 1 }}
                     transition={{ duration: 0.8, delay: 0.2 }}
-                    className={`${activeForm === 'login' ? 'md:w-[60%]' : 'md:w-1/2'} w-full h-full flex flex-col bg-white justify-center overflow-y-auto py-8 md:py-0`}
+                    className='md:w-1/2 w-full h-full flex flex-col bg-white justify-center overflow-y-auto py-8 md:py-0'
                 >
                     {activeForm === "login" && <SignInForm onSwitch={setActiveForm} />}
                     {activeForm === "signup" && <SignUpForm onSwitch={setActiveForm} />}
