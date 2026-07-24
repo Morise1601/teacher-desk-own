@@ -35,6 +35,7 @@ export default function RootLayout({
         <link href="https://fonts.cdnfonts.com/css/life-lt-roman" rel="stylesheet" />
         <link href="https://fonts.cdnfonts.com/css/br-cobane" rel="stylesheet" />
         <link href="https://fonts.cdnfonts.com/css/oswald-4" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Outfit:wght@400;500&display=swap" rel="stylesheet" />
       </head>
       <body
         className="antialiased bg-[#eeeeee] h-full"

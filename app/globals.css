@@ -16,6 +16,14 @@
 .oswald-font {
   font-family: 'Oswald', sans-serif;
 }
+
+.sora-font {
+  font-family: 'Sora', sans-serif;
+}
+
+.outfit-font {
+  font-family: 'Outfit', sans-serif;
+}
  
 :root {
   --color-primary: #143c64;
@@ -29,6 +37,35 @@ select,
 .cursor-pointer-all * {
   cursor: pointer !important;
 }
+
+/* ── Autofill transparent background fix ──────────────────────────────────── */
+/* Browsers (Chrome, Safari, Edge) paint a yellow/blue background on autofill.
+   The -webkit-box-shadow inset trick is the only reliable way to override it. */
+.autofill-transparent:-webkit-autofill,
+.autofill-transparent:-webkit-autofill:hover,
+.autofill-transparent:-webkit-autofill:focus,
+.autofill-transparent:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 9999px white inset !important;
+  box-shadow: 0 0 0 9999px white inset !important;
+  -webkit-text-fill-color: #374151 !important; /* gray-700 */
+  caret-color: #374151;
+  /* Delay background transition so autofill color never flashes */
+  transition: background-color 99999s ease-in-out 0s !important;
+}
+
+/* Global fallback — catches any input not explicitly classed */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 9999px white inset !important;
+  box-shadow: 0 0 0 9999px white inset !important;
+  -webkit-text-fill-color: #374151 !important;
+  caret-color: #374151;
+  transition: background-color 99999s ease-in-out 0s !important;
+}
+
+
 
 .city {
   background-image: url('/images/city1-min.jpg');
