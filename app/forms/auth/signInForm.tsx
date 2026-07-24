@@ -187,7 +187,7 @@ export default function SignInForm({ onSwitch }: Props) {
 
               {/* Email Field */}
               <div className="space-y-1.5">
-                <label className="text-[12px] font-medium text-gray-700 outfit-font block">Email Address</label>
+                <label className="text-[13px] font-medium text-gray-700 outfit-font block">Email Address</label>
                 <div
                   className={`flex items-center gap-2.5 h-11 border rounded-[8px] px-3.5 transition-all duration-200 bg-white ${emailFocused ? 'border-emerald-500 ring-2 ring-emerald-50' : 'border-gray-200'}`}
                 >
@@ -207,7 +207,7 @@ export default function SignInForm({ onSwitch }: Props) {
 
               {/* Password Field */}
               <div className="space-y-1.5">
-                <label className="text-[12px] font-medium text-gray-700 outfit-font block">Password</label>
+                <label className="text-[13px] font-medium text-gray-700 outfit-font block">Password</label>
                 <div
                   className={`relative flex items-center border rounded-[8px] transition-all duration-200 bg-white ${passwordFocused ? 'border-emerald-500 ring-2 ring-emerald-50' : 'border-gray-200'}`}
                 >
@@ -230,7 +230,7 @@ export default function SignInForm({ onSwitch }: Props) {
                   <button
                     type="button"
                     onClick={() => onSwitch("reset")}
-                    className="text-[12px] text-blue-600 hover:text-blue-700 hover:underline outfit-font font-medium transition-colors"
+                    className="text-[12px] text-emerald-600 hover:text-emerald-700 hover:underline outfit-font font-medium transition-colors"
                   >
                     Forgot Password?
                   </button>
@@ -306,13 +306,13 @@ export default function SignInForm({ onSwitch }: Props) {
       <div className="w-full text-center px-4 pb-5 space-y-1">
         <div className="flex items-center justify-center gap-1.5 text-gray-500">
           <MdSecurity size={14} className="text-emerald-500" />
-          <span className="text-[11px] outfit-font">Your data is secure with us</span>
+          <span className="text-[13px] outfit-font">Your data is secure with us</span>
         </div>
-        <p className="text-[11px] text-gray-400 outfit-font font-normal">
+        <p className="text-[13px] text-gray-400 outfit-font font-normal">
           By continuing, you agree to our{' '}
-          <a href="#" className="text-blue-500 hover:underline">Terms of Use</a>
+          <a href="#" className="text-emerald-500 hover:underline font-medium">Terms of Use</a>
           {' '}and{' '}
-          <a href="#" className="text-blue-500 hover:underline">Privacy Policy</a>.
+          <a href="#" className="text-emerald-500 hover:underline font-medium">Privacy Policy</a>.
         </p>
       </div>
     </div>
