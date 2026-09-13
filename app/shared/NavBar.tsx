@@ -14,13 +14,14 @@ import { FaBell, FaUser, FaUsers, FaEnvelope } from "react-icons/fa";
 import { IoSettingsOutline } from "react-icons/io5";
 import { Input } from "@/components/ui/input";
 import MessageMenu from './MessageMenu';
-import MessagePopup from './MessagePopup';
 import NotificationMenu from './NotificationMenu';
 import { supabase } from '@/lib/supabase';
 import { decryptData } from '@/lib/crypto';
 import { getProfileByUserIdAction } from '@/app/actions/profile';
 import { getInstitutionProfileAction } from '@/app/actions/institution';
 import { UserAvatar } from '@/components/ui/user-avatar';
+import AppLogo from '@/components/ui/AppLogo';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 
 export default function Navbar() {
     const [isOpen, setIsOpen] = useState(false);
@@ -73,29 +74,25 @@ export default function Navbar() {
     };
 
     return (
-        <header className="bg-white p-4 sticky top-0 z-50 shadow-sm">
+        <header className="bg-white dark:bg-slate-900 border-b border-transparent dark:border-slate-800 p-4 sticky top-0 z-50 shadow-sm transition-colors duration-200">
             <nav className="flex items-center justify-between max-w-7xl mx-auto">
 
                 {/* ── Logo ── */}
                 <div className="flex items-center gap-4">
-                    <div className="text-xl font-bold text-[var(--color-primary)]">
-                        <Link href="/dashboard">
-                            <h2 className='text-xl oswald-font font-bold py-1.5 px-2 rounded-md' title='TeacherDesk'>
-                                <span className='text-[var(--color-primary)]'>Teacher</span><span className='text-[var(--color-secondary)]'>Desk</span>
-                            </h2>
-                        </Link>
-                    </div>
+                    <Link href="/dashboard" className="flex items-center">
+                        <AppLogo variant="full" width={160} height={34} className="h-8 md:h-9 w-auto" priority />
+                    </Link>
 
                     {/* Search Bar — desktop */}
-                    <form onSubmit={handleSearchSubmit} className="hidden md:flex items-center border border-gray-300 rounded-md px-3 py-1.5 focus-within:ring-2 focus-within:ring-blue-200 focus-within:border-blue-400 transition-all duration-200 w-[200px] lg:w-[150px] xl:w-[250px]">
+                    <form onSubmit={handleSearchSubmit} className="hidden md:flex items-center border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 rounded-md px-3 py-1.5 focus-within:ring-2 focus-within:ring-blue-200 dark:focus-within:ring-slate-600 focus-within:border-blue-400 transition-all duration-200 w-[200px] lg:w-[150px] xl:w-[250px]">
                         <Input
                             type="text"
                             placeholder="Search..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="flex-grow h-auto outline-none border-none focus-visible:ring-0 text-sm bg-transparent placeholder-gray-500"
+                            className="flex-grow h-auto outline-none border-none focus-visible:ring-0 text-sm bg-transparent placeholder-gray-500 dark:placeholder-gray-400 text-gray-800 dark:text-gray-100"
                         />
-                        <button type="submit" className="ml-2 text-gray-500 hover:text-blue-500">
+                        <button type="submit" className="ml-2 text-gray-500 dark:text-gray-400 hover:text-blue-500">
                             <HiOutlineSearch className="text-xl" />
                         </button>
                     </form>
@@ -182,7 +179,9 @@ export default function Navbar() {
                 </ul>
 
                 {/* ── Desktop Profile & Secondary Actions ── */}
-                <div className="hidden lg:flex items-center gap-5 border-l border-slate-100 pl-6 ml-4">
+                <div className="hidden lg:flex items-center gap-4 border-l border-slate-100 dark:border-slate-800 pl-5 ml-3">
+                    <ThemeToggle size="sm" />
+
                     <Link href="/profile">
                         <motion.div
                             className="relative group cursor-pointer"
@@ -220,16 +219,17 @@ export default function Navbar() {
                 </div>
 
                 {/* ── Hamburger (mobile & tablet) ── */}
-                <div className="flex lg:hidden z-[60] items-center gap-4">
+                <div className="flex lg:hidden z-[60] items-center gap-3">
+                    <ThemeToggle size="sm" />
 
                     <motion.button
                         onClick={() => setIsOpen(!isOpen)}
                         initial={false}
-                        className='cursor-pointer'
+                        className='cursor-pointer p-1 rounded-md text-gray-700 dark:text-gray-200'
                         animate={{ rotate: isOpen ? 90 : 0 }}
                         transition={{ type: 'spring', stiffness: 300 }}
                     >
-                        {isOpen ? <HiX className="text-3xl text-blue-800" /> : <HiMenu className="text-3xl text-blue-800" />}
+                        {isOpen ? <HiX className="text-3xl text-blue-800 dark:text-blue-400" /> : <HiMenu className="text-3xl text-blue-800 dark:text-blue-400" />}
                     </motion.button>
                 </div>
 
@@ -249,17 +249,15 @@ export default function Navbar() {
                                 animate={{ x: 0 }}
                                 exit={{ x: '-100%' }}
                                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                                className="fixed top-0 left-0 bottom-0 w-[280px] z-50 bg-white shadow-2xl lg:hidden flex flex-col pt-6 overflow-y-auto"
+                                className="fixed top-0 left-0 bottom-0 w-[280px] z-50 bg-white dark:bg-slate-900 border-r border-transparent dark:border-slate-800 shadow-2xl lg:hidden flex flex-col pt-6 overflow-y-auto"
                             >
                                 {/* Mobile Header Inside Menu */}
                                 <div className='px-6 mb-8 flex items-center justify-between'>
                                     <Link href="/dashboard" onClick={() => setIsOpen(false)}>
-                                        <h2 className='text-xl oswald-font font-bold'>
-                                            <span className='text-[var(--color-primary)]'>Teacher</span><span className='text-[var(--color-secondary)]'>Desk</span>
-                                        </h2>
+                                        <AppLogo variant="full" width={140} height={30} className="h-7 w-auto" />
                                     </Link>
-                                    <button onClick={() => setIsOpen(false)} className='p-1 rounded-full hover:bg-gray-100 transition-colors'>
-                                        <HiX className="text-2xl text-[var(--color-primary)]" />
+                                    <button onClick={() => setIsOpen(false)} className='p-1 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors'>
+                                        <HiX className="text-2xl text-[var(--color-primary)] dark:text-slate-300" />
                                     </button>
                                 </div>
 

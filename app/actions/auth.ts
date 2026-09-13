@@ -449,3 +449,93 @@ export async function registerGoogleInstitutionAction(encryptedPayload: string) 
     return encryptData({ success: false, message: err.message });
   }
 }
+
+/**
+ * Check if an email belongs to a Google-only account.
+ * If the user registered via Google, password reset is strictly disallowed.
+ */
+export async function checkCanResetPasswordAction(encryptedPayload: string) {
+  try {
+    const payload = decryptData(encryptedPayload);
+    const email = payload?.email?.trim().toLowerCase();
+    if (!email) {
+      return encryptData({ success: false, message: "Email is required." });
+    }
+
+    if (supabaseAdmin) {
+      // 1. Check teachers table
+      const { data: teacher } = await supabaseAdmin
+        .from('teachers')
+        .select('id, auth_provider')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (teacher?.auth_provider === 'google') {
+        return encryptData({
+          success: false,
+          isGoogleUser: true,
+          message: "This account was registered using Google Sign-In. Password reset is not permitted. Please sign in directly with Google."
+        });
+      }
+
+      // 2. Check institutions table
+      const { data: inst } = await supabaseAdmin
+        .from('institutions')
+        .select('id, auth_provider')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (inst?.auth_provider === 'google') {
+        return encryptData({
+          success: false,
+          isGoogleUser: true,
+          message: "This account was registered using Google Sign-In. Password reset is not permitted. Please sign in directly with Google."
+        });
+      }
+
+      // 3. Check super_admins table
+      const { data: admin } = await supabaseAdmin
+        .from('super_admins')
+        .select('id, auth_provider')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (admin?.auth_provider === 'google') {
+        return encryptData({
+          success: false,
+          isGoogleUser: true,
+          message: "This account was registered using Google Sign-In. Password reset is not permitted. Please sign in directly with Google."
+        });
+      }
+
+      // 4. Check Supabase Auth users directly
+      if (supabaseAdmin.auth?.admin) {
+        try {
+          const { data: userData, error } = await supabaseAdmin.auth.admin.listUsers();
+          if (!error && userData?.users) {
+            const authUser = userData.users.find((u: any) => u.email?.toLowerCase() === email);
+            if (authUser) {
+              const providers = authUser.app_metadata?.providers || [authUser.app_metadata?.provider];
+              const isOnlyGoogle = providers?.includes('google') && !providers?.includes('email');
+              if (isOnlyGoogle) {
+                return encryptData({
+                  success: false,
+                  isGoogleUser: true,
+                  message: "This account was registered using Google Sign-In. Password reset is not permitted. Please sign in directly with Google."
+                });
+              }
+            }
+          }
+        } catch (e: any) {
+          console.warn("Could not check Supabase auth admin listUsers:", e.message);
+        }
+      }
+    }
+
+    return encryptData({ success: true, canReset: true });
+  } catch (err: any) {
+    console.error("❌ [checkCanResetPasswordAction Error]:", err.message);
+    return encryptData({ success: true, canReset: true });
+  }
+}
+

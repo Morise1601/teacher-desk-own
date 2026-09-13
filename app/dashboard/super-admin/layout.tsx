@@ -23,6 +23,9 @@ import {
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { HiOutlineExclamationCircle } from 'react-icons/hi';
+import { useTheme } from '@/app/context/ThemeContext';
+import AppLogo from '@/components/ui/AppLogo';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 
 const SidebarItem = ({ href, icon, label, active, isCollapsed, isMobile }: any) => {
   if (isMobile) {
@@ -59,21 +62,7 @@ const SidebarItem = ({ href, icon, label, active, isCollapsed, isMobile }: any) 
 export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [theme, setTheme] = useState('light');
-
-  // Handle client-side hydration for theme
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    setTheme(savedTheme);
-  }, []);
-
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-    localStorage.setItem('theme', newTheme);
-    // document.documentElement.classList.toggle('dark', newTheme === 'dark'); 
-    // Uncomment when full dark mode classes are enabled globally.
-  };
+  const { theme, toggleTheme } = useTheme();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -93,29 +82,30 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
   ];
 
   return (
-    <div className={`flex bg-[#f8fafc] text-[var(--color-primary)] min-h-[100dvh] ${theme === 'dark' ? 'dark-mode-simulated' : ''}`}>
+    <div className="flex bg-[#f8fafc] dark:bg-[#0b1120] text-slate-800 dark:text-slate-100 min-h-[100dvh] transition-colors duration-200">
       {/* Desktop Sidebar */}
       <aside
-        className={`hidden md:flex flex-col border-r border-gray-200 bg-white z-40 transition-all duration-300 ${isCollapsed ? 'w-24' : 'w-64'
-          }`}
+        className={`hidden md:flex flex-col border-r border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 z-40 transition-all duration-300 ${
+          isCollapsed ? 'w-24' : 'w-64'
+        }`}
       >
         <div className="p-4 flex flex-col h-full relative">
           {/* Collapse Toggle */}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="absolute -right-3 top-6 bg-white border border-gray-200 text-gray-400 hover:text-[var(--color-primary)] w-6 h-6 rounded-full flex items-center justify-center shadow-sm z-50 transition-colors"
+            className="absolute -right-3 top-6 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-400 hover:text-[var(--color-primary)] w-6 h-6 rounded-full flex items-center justify-center shadow-sm z-50 transition-colors"
           >
             {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
           </button>
 
           {/* Logo Area */}
           <div className={`flex items-center gap-3 mb-8 px-2 pt-2 ${isCollapsed ? 'justify-center' : 'justify-start'}`}>
-            <div className="w-10 h-10 bg-[var(--color-primary)] rounded-md flex-shrink-0 flex items-center justify-center text-white shadow-md">
-              <Command size={20} />
+            <div className="w-10 h-10 rounded-md flex-shrink-0 flex items-center justify-center shadow-md overflow-hidden bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
+              <AppLogo variant="app" width={36} height={36} />
             </div>
             {!isCollapsed && (
               <div className="flex flex-col overflow-hidden">
-                <h1 className="text-base font-semibold tracking-tight capitalize truncate">Admin Panel</h1>
+                <h1 className="text-base font-semibold tracking-tight capitalize truncate text-slate-800 dark:text-slate-100">Admin Panel</h1>
                 <span className="text-xs text-emerald-500 font-medium">Online</span>
               </div>
             )}
@@ -128,10 +118,10 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
             ))}
           </nav>
 
-          <div className={`mt-auto pt-6 border-t border-gray-100 ${isCollapsed ? 'px-0' : 'px-3'}`}>
+          <div className={`mt-auto pt-6 border-t border-gray-100 dark:border-slate-800 ${isCollapsed ? 'px-0' : 'px-3'}`}>
             <button
               onClick={handleLogout}
-              className={`flex items-center gap-3 p-3 text-red-500 hover:bg-red-50 rounded-md transition-all w-full text-sm font-medium capitalize group ${isCollapsed ? 'justify-center' : 'justify-start'}`}
+              className={`flex items-center gap-3 p-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-md transition-all w-full text-sm font-medium capitalize group ${isCollapsed ? 'justify-center' : 'justify-start'}`}
               title="Logout"
             >
               <div className="transition-transform group-hover:scale-110">
@@ -146,7 +136,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
       {/* Main Framework */}
       <div className="flex-1 flex flex-col min-w-0 h-[100dvh]">
         {/* Sleek Minimal Header */}
-        <header className="h-20 shrink-0 bg-white border-b border-gray-200 flex items-center justify-between px-6 md:px-10 z-30">
+        <header className="h-20 shrink-0 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between px-6 md:px-10 z-30 transition-colors duration-200">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <h2 className="text-xl md:text-2xl font-bold oswald-font capitalize text-[var(--color-primary)] drop-shadow-sm">
@@ -157,16 +147,10 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
 
           <div className="flex items-center gap-4">
             {/* Theme Changer */}
-            <button
-              onClick={toggleTheme}
-              className="w-10 h-10 rounded-md bg-gray-50 flex items-center justify-center text-gray-500 hover:text-[var(--color-primary)] hover:bg-gray-100 transition-all border border-transparent hover:border-gray-200 shadow-sm hover:shadow"
-              title="Toggle Theme"
-            >
-              {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-            </button>
+            <ThemeToggle variant="icon" size="md" />
 
             {/* User Profile Token */}
-            <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
+            <div className="flex items-center gap-3 pl-4 border-l border-gray-200 dark:border-slate-800">
               <div className="w-10 h-10 rounded-md bg-[var(--color-primary)] flex items-center justify-center text-white text-sm font-bold shadow-md cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all">
                 SA
               </div>

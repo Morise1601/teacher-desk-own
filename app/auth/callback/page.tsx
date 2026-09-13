@@ -18,8 +18,18 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     let active = true;
 
-    const processAuthCallback = async () => {
-      // 1. Check for errors in the URL query string (from Google or Supabase)
+      // 1. Check if this callback is for Password Recovery
+      const isRecovery =
+        searchParams.get('type') === 'recovery' ||
+        (typeof window !== 'undefined' && window.location.hash.includes('type=recovery'));
+
+      if (isRecovery) {
+        const queryOrHash = typeof window !== 'undefined' ? (window.location.hash || window.location.search) : '';
+        router.replace(`/reset-password${queryOrHash}`);
+        return;
+      }
+
+      // 2. Check for errors in the URL query string (from Google or Supabase)
       const error = searchParams.get('error');
       const errorDescription = searchParams.get('error_description');
 
@@ -34,7 +44,7 @@ export default function AuthCallbackPage() {
       }
 
       try {
-        // 2. Fetch authenticated Supabase user session
+        // 3. Fetch authenticated Supabase user session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
         if (sessionError) throw sessionError;

@@ -5,6 +5,8 @@
 
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 .life-font {
   font-family: 'Life LT Roman', sans-serif;
 }
@@ -28,6 +30,17 @@
 :root {
   --color-primary: #143c64;
   --color-secondary: #12501b;
+}
+
+.dark {
+  --color-primary: #38bdf8;
+  --color-secondary: #34d399;
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #0b1120;
+  color: #f1f5f9;
 }
 
 button, 
