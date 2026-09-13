@@ -412,7 +412,7 @@ export default function ResetForm({ onSwitch, defaultToNewPasswordOnRecovery }: 
                 <div className="text-center pt-1">
                   <button
                     type="button"
-                    onClick={() => onSwitch('login')}
+                    onClick={() => onSwitch?.('login')}
                     className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline transition-colors outfit-font"
                   >
                     <ArrowLeft size={15} />
@@ -564,7 +564,7 @@ export default function ResetForm({ onSwitch, defaultToNewPasswordOnRecovery }: 
 
                   <button
                     type="button"
-                    onClick={() => onSwitch('login')}
+                    onClick={() => onSwitch?.('login')}
                     className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline transition-colors outfit-font"
                   >
                     <ArrowLeft size={14} />

@@ -18,6 +18,7 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     let active = true;
 
+    const processAuthCallback = async () => {
       // 1. Check if this callback is for Password Recovery
       const isRecovery =
         searchParams.get('type') === 'recovery' ||
