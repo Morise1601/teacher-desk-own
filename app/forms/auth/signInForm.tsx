@@ -26,6 +26,8 @@ import { getUserRoleAction } from '@/app/actions/auth';
 import { decryptData } from '@/lib/crypto';
 import { Button } from "@/components/ui/button";
 import { getGoogleAuthSettingsAction } from '@/app/actions/settings';
+import AppLogo from '@/components/ui/AppLogo';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 
 type Props = {
   onSwitch: (form: AuthFormType) => void;
@@ -137,25 +139,31 @@ export default function SignInForm({ onSwitch }: Props) {
   };
 
   return (
-    <div className="md:h-full w-full flex flex-col items-center justify-between bg-white relative">
+    <div className="md:h-full w-full flex flex-col items-center justify-between bg-white dark:bg-[#0b1120] transition-colors duration-200 relative">
 
-      {/* Top Language Selector */}
-      <div className="w-full hidden md:flex justify-end px-8 pt-5 pb-0">
-        <button
-          type="button"
-          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 outfit-font transition-colors"
-        >
-          <MdLanguage size={15} className="text-gray-400" />
-          <span>English</span>
-          <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
+      {/* Top Bar with Language Selector and Theme Toggle */}
+      <div className="w-full flex justify-between md:justify-end items-center px-6 md:px-10 pt-4 pb-0 z-20">
+        <div className="md:hidden flex items-center">
+          <AppLogo variant="app" width={32} height={32} />
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 outfit-font transition-colors"
+          >
+            <MdLanguage size={15} className="text-gray-400 dark:text-gray-500" />
+            <span>English</span>
+            <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <ThemeToggle size="sm" />
+        </div>
       </div>
 
       {/* Form Card */}
       <div className="w-full flex-grow flex items-center justify-center px-4 py-6 md:px-10">
-        <div className="w-full max-w-2xl bg-white rounded-[8px] border border-gray-100 shadow-[0_4px_40px_rgba(0,0,0,0.07)] p-7 md:p-10">
+        <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[8px] border border-gray-100 dark:border-slate-800 shadow-[0_4px_40px_rgba(0,0,0,0.07)] dark:shadow-[0_4px_40px_rgba(0,0,0,0.35)] p-7 md:p-10 transition-colors duration-200">
 
           <AnimatePresence mode="wait">
             <motion.form
@@ -168,30 +176,33 @@ export default function SignInForm({ onSwitch }: Props) {
               className="flex flex-col gap-5 w-full authForms"
               autoComplete="off"
             >
-              {/* Branding */}
-              <div className="text-center mb-1">
-                {/* Logo — Sora Bold */}
-                <h2 className="text-[1.6rem] font-bold tracking-tight sora-font">
-                  <span className="text-[var(--color-primary)]">Teacher</span>
-                  <span className="text-emerald-600">desk</span>
-                </h2>
+              {/* Branding with Full Logo */}
+              <div className="text-center mb-1 flex flex-col items-center">
+                <AppLogo
+                  variant="full"
+                  width={210}
+                  height={44}
+                  priority
+                  className="h-10 md:h-11 w-auto mb-1 drop-shadow-sm"
+                />
                 {/* Heading — Sora SemiBold */}
-                <h3 className="text-xl font-semibold text-[var(--color-primary)] sora-font mt-2 tracking-tight">
-                  Welcome Back!
-                </h3>
+
                 {/* Body — Outfit Regular */}
-                <p className="text-gray-400 outfit-font text-[13px] mt-1 font-normal">
+                <p className="text-gray-400 dark:text-slate-400 outfit-font text-[13px] mt-1 font-normal">
                   Login to your Teacherdesk account
                 </p>
               </div>
 
               {/* Email Field */}
               <div className="space-y-1.5">
-                <label className="text-[13px] font-medium text-gray-700 outfit-font block">Email Address</label>
+                <label className="text-[13px] font-medium text-gray-700 dark:text-gray-200 outfit-font block">Email Address</label>
                 <div
-                  className={`flex items-center gap-2.5 h-11 border rounded-[8px] px-3.5 transition-all duration-200 bg-white ${emailFocused ? 'border-emerald-500 ring-2 ring-emerald-50' : 'border-gray-200'}`}
+                  className={`flex items-center gap-2.5 h-11 border rounded-[8px] px-3.5 transition-all duration-200 bg-white dark:bg-slate-800/80 ${emailFocused
+                      ? 'border-emerald-500 ring-2 ring-emerald-50 dark:ring-emerald-950'
+                      : 'border-gray-200 dark:border-slate-700'
+                    }`}
                 >
-                  <MdEmail size={16} className={`shrink-0 transition-colors ${emailFocused ? 'text-emerald-600' : 'text-gray-300'}`} />
+                  <MdEmail size={16} className={`shrink-0 transition-colors ${emailFocused ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-slate-500'}`} />
                   <input
                     type="email"
                     placeholder="Enter your email address"
@@ -200,20 +211,23 @@ export default function SignInForm({ onSwitch }: Props) {
                     onFocus={() => setEmailFocused(true)}
                     onBlur={() => setEmailFocused(false)}
                     onKeyDown={e => e.key === 'Enter' && loginFn()}
-                    className="autofill-transparent flex-1 outline-none text-[13px] text-gray-700 placeholder-gray-300 outfit-font bg-transparent font-normal"
+                    className="autofill-transparent flex-1 outline-none text-[13px] text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500 outfit-font bg-transparent font-normal"
                   />
                 </div>
               </div>
 
               {/* Password Field */}
               <div className="space-y-1.5">
-                <label className="text-[13px] font-medium text-gray-700 outfit-font block">Password</label>
+                <label className="text-[13px] font-medium text-gray-700 dark:text-gray-200 outfit-font block">Password</label>
                 <div
-                  className={`relative flex items-center border rounded-[8px] transition-all duration-200 bg-white ${passwordFocused ? 'border-emerald-500 ring-2 ring-emerald-50' : 'border-gray-200'}`}
+                  className={`relative flex items-center border rounded-[8px] transition-all duration-200 bg-white dark:bg-slate-800/80 ${passwordFocused
+                      ? 'border-emerald-500 ring-2 ring-emerald-50 dark:ring-emerald-950'
+                      : 'border-gray-200 dark:border-slate-700'
+                    }`}
                 >
                   <MdLock
                     size={16}
-                    className={`absolute left-3.5 shrink-0 transition-colors z-10 ${passwordFocused ? 'text-emerald-600' : 'text-gray-300'}`}
+                    className={`absolute left-3.5 shrink-0 transition-colors z-10 ${passwordFocused ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-slate-500'}`}
                   />
                   <PasswordInput
                     placeholder="Enter your password"
@@ -222,7 +236,7 @@ export default function SignInForm({ onSwitch }: Props) {
                     onFocus={() => setPasswordFocused(true)}
                     onBlur={() => setPasswordFocused(false)}
                     onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && loginFn()}
-                    className="autofill-transparent w-full pl-9 h-11 text-[13px] text-gray-700 placeholder-gray-300 outfit-font bg-transparent border-0 shadow-none ring-0 focus-visible:ring-0 focus-visible:border-0 rounded-[8px] font-normal"
+                    className="autofill-transparent w-full pl-9 h-11 text-[13px] text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500 outfit-font bg-transparent border-0 shadow-none ring-0 focus-visible:ring-0 focus-visible:border-0 rounded-[8px] font-normal"
                   />
                 </div>
                 {/* Forgot Password */}
@@ -230,7 +244,7 @@ export default function SignInForm({ onSwitch }: Props) {
                   <button
                     type="button"
                     onClick={() => onSwitch("reset")}
-                    className="text-[12px] text-emerald-600 hover:text-emerald-700 hover:underline outfit-font font-medium transition-colors"
+                    className="text-[12px] text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline outfit-font font-medium transition-colors"
                   >
                     Forgot Password?
                   </button>
@@ -254,44 +268,44 @@ export default function SignInForm({ onSwitch }: Props) {
 
               {/* Divider */}
               <div className="relative flex items-center">
-                <div className="flex-grow border-t border-gray-100" />
-                <span className="flex-shrink mx-4 text-[12px] text-gray-400 outfit-font">or continue with</span>
-                <div className="flex-grow border-t border-gray-100" />
+                <div className="flex-grow border-t border-gray-100 dark:border-slate-800" />
+                <span className="flex-shrink mx-4 text-[12px] text-gray-400 dark:text-gray-500 outfit-font">or continue with</span>
+                <div className="flex-grow border-t border-gray-100 dark:border-slate-800" />
               </div>
 
               {/* Social Buttons — Outfit Medium */}
               <div className="grid grid-cols-2 gap-3">
                 <motion.button
                   type="button"
-                  className="flex items-center justify-center gap-2.5 h-11 border border-gray-200 rounded-[8px] hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 bg-white"
+                  className="flex items-center justify-center gap-2.5 h-11 border border-gray-200 dark:border-slate-700 rounded-[8px] hover:bg-gray-50 dark:hover:bg-slate-800 hover:border-gray-300 dark:hover:border-slate-600 transition-all duration-200 bg-white dark:bg-slate-800/60"
                   whileHover={{ y: -1, boxShadow: '0 4px 14px rgba(0,0,0,0.07)' }}
                   whileTap={{ scale: 0.98 }}
                   onClick={googleSignIn}
                 >
                   <FcGoogle size={19} />
-                  <span className="text-[13px] font-medium text-gray-600 outfit-font">Google</span>
+                  <span className="text-[13px] font-medium text-gray-700 dark:text-gray-200 outfit-font">Google</span>
                 </motion.button>
 
                 <motion.button
                   type="button"
-                  className="flex items-center justify-center gap-2.5 h-11 border border-gray-200 rounded-[8px] hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 bg-white"
+                  className="flex items-center justify-center gap-2.5 h-11 border border-gray-200 dark:border-slate-700 rounded-[8px] hover:bg-gray-50 dark:hover:bg-slate-800 hover:border-gray-300 dark:hover:border-slate-600 transition-all duration-200 bg-white dark:bg-slate-800/60"
                   whileHover={{ y: -1, boxShadow: '0 4px 14px rgba(0,0,0,0.07)' }}
                   whileTap={{ scale: 0.98 }}
                   onClick={microsoftSignIn}
                 >
                   <MicrosoftColorIcon />
-                  <span className="text-[13px] font-medium text-gray-600 outfit-font">Microsoft</span>
+                  <span className="text-[13px] font-medium text-gray-700 dark:text-gray-200 outfit-font">Microsoft</span>
                 </motion.button>
               </div>
 
               {/* Sign Up Link — Outfit Regular */}
               <div className="text-center">
-                <p className="text-[13px] text-gray-500 outfit-font font-normal">
+                <p className="text-[13px] text-gray-500 dark:text-gray-400 outfit-font font-normal">
                   New to Teacherdesk?{' '}
                   <button
                     type="button"
                     onClick={() => onSwitch("signup")}
-                    className="text-emerald-600 font-semibold hover:text-emerald-700 hover:underline transition-colors sora-font"
+                    className="text-emerald-600 dark:text-emerald-400 font-semibold hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline transition-colors sora-font"
                   >
                     Create an account
                   </button>
@@ -304,11 +318,11 @@ export default function SignInForm({ onSwitch }: Props) {
 
       {/* Bottom Security Notice — Outfit Regular */}
       <div className="w-full text-center px-4 pb-5 space-y-1">
-        <div className="flex items-center justify-center gap-1.5 text-gray-500">
+        <div className="flex items-center justify-center gap-1.5 text-gray-500 dark:text-gray-400">
           <MdSecurity size={14} className="text-emerald-500" />
           <span className="text-[13px] outfit-font">Your data is secure with us</span>
         </div>
-        <p className="text-[13px] text-gray-400 outfit-font font-normal">
+        <p className="text-[13px] text-gray-400 dark:text-gray-500 outfit-font font-normal">
           By continuing, you agree to our{' '}
           <a href="#" className="text-emerald-500 hover:underline font-medium">Terms of Use</a>
           {' '}and{' '}

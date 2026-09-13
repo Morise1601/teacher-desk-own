@@ -12,6 +12,7 @@ import ProfessionalForm from '../forms/auth/professionForm';
 import { FaQuoteLeft, FaUser } from 'react-icons/fa';
 import { AuthFormType } from '@/app/types/auth';
 import { useSearchParams } from 'next/navigation';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 
 const AuthContent = () => {
     const searchParams = useSearchParams();
@@ -26,6 +27,8 @@ const AuthContent = () => {
             setActiveForm('teacher_signup');
         } else if (type === 'institution') {
             setActiveForm('institution_signup');
+        } else if (type === 'reset' || type === 'recovery') {
+            setActiveForm('reset');
         }
 
         if (ref) {
@@ -36,12 +39,18 @@ const AuthContent = () => {
     const isReverse = activeForm === 'teacher_signup' || activeForm === 'institution_signup';
 
     return (
-        <div className="min-h-[100dvh] md:h-screen w-full bg-white relative overflow-hidden flex">
+        <div className="min-h-[100dvh] md:h-screen w-full bg-white dark:bg-[#0b1120] relative overflow-hidden flex transition-colors duration-200">
+            {/* Theme Toggle for non-login and non-reset auth views (since login and reset have integrated top bars) */}
+            {activeForm !== 'login' && activeForm !== 'reset' && (
+                <div className="absolute top-4 right-5 z-50">
+                    <ThemeToggle size="sm" />
+                </div>
+            )}
             <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.5 }}
-                className={`w-full h-full relative z-2 flex flex-col ${isReverse ? 'md:flex-row-reverse' : 'md:flex-row'} bg-white overflow-hidden transition-all duration-500`}
+                className={`w-full h-full relative z-2 flex flex-col ${isReverse ? 'md:flex-row-reverse' : 'md:flex-row'} bg-white dark:bg-[#0b1120] overflow-hidden transition-all duration-500`}
             >
                 {/* Left/Side Panel */}
                 <motion.div
@@ -146,9 +155,11 @@ const AuthContent = () => {
                                     transition={{ duration: 0.7 }}
                                     className='px-10 pt-10 pb-4'
                                 >
-                                    <h2 className='text-[1.8rem] font-bold text-white tracking-tight sora-font'>
-                                        Teacher<span className='text-emerald-400'>desk</span>
-                                    </h2>
+                                    <img
+                                        src="/images/logo_dark.webp"
+                                        alt="TeacherDesk"
+                                        className="h-10 w-auto object-contain drop-shadow-md"
+                                    />
                                 </motion.div>
 
                                 {/* Hero Text */}
@@ -241,7 +252,7 @@ const AuthContent = () => {
                     initial={{ x: 80, opacity: 0 }}
                     animate={{ x: 0, opacity: 1 }}
                     transition={{ duration: 0.8, delay: 0.2 }}
-                    className='md:w-1/2 w-full h-full flex flex-col bg-white justify-center overflow-y-auto py-8 md:py-0'
+                    className='md:w-1/2 w-full h-full flex flex-col bg-white dark:bg-[#0b1120] justify-center overflow-y-auto py-8 md:py-0 transition-colors duration-200'
                 >
                     {activeForm === "login" && <SignInForm onSwitch={setActiveForm} />}
                     {activeForm === "signup" && <SignUpForm onSwitch={setActiveForm} />}
