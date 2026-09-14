@@ -25,12 +25,16 @@ export const metadata: Metadata = {
   description: "TeacherDesk connects educators, researchers, and institutions globally.",
   icons: {
     icon: [
-      { url: '/images/App_logo_light.webp', type: 'image/webp' },
-      { url: '/images/App_logo_dark.webp', media: '(prefers-color-scheme: dark)', type: 'image/webp' },
       { url: '/favicon.ico', sizes: 'any' },
+      { url: '/images/favicon-light.ico', media: '(prefers-color-scheme: light)', type: 'image/x-icon' },
+      { url: '/images/favicon-dark.ico', media: '(prefers-color-scheme: dark)', type: 'image/x-icon' },
+      { url: '/images/favicon-light-32.png', media: '(prefers-color-scheme: light)', type: 'image/png', sizes: '32x32' },
+      { url: '/images/favicon-dark-32.png', media: '(prefers-color-scheme: dark)', type: 'image/png', sizes: '32x32' },
     ],
-    shortcut: '/images/App_logo_light.webp',
-    apple: '/apple-touch-icon.png',
+    shortcut: '/favicon.ico',
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
   },
 };
 
