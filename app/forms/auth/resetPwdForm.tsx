@@ -93,7 +93,7 @@ export default function ResetForm({ onSwitch, defaultToNewPasswordOnRecovery }: 
           if (!error && data?.session) {
             setStep('new_password');
           }
-        }).catch(() => {});
+        }).catch(() => { });
       }
     }
 
@@ -121,7 +121,7 @@ export default function ResetForm({ onSwitch, defaultToNewPasswordOnRecovery }: 
             setIsGoogleAccount(true);
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     };
 
     if (step === 'new_password') {
@@ -350,9 +350,9 @@ export default function ResetForm({ onSwitch, defaultToNewPasswordOnRecovery }: 
                 <div className="text-center flex flex-col items-center">
                   <div className="flex items-center justify-center w-24 h-24 sm:w-26 sm:h-26 aspect-square rounded-full mb-3">
                     <img
-                      src="/images/auth/lock_circle.webp"
+                      src="/images/auth/lock_img.webp"
                       alt="Forgot Password Lock"
-                      className="w-full h-full object-contain drop-shadow-sm select-none"
+                      className="w-full h-full object-contain select-none"
                     />
                   </div>
 
@@ -370,17 +370,15 @@ export default function ResetForm({ onSwitch, defaultToNewPasswordOnRecovery }: 
                     Email Address
                   </label>
                   <div
-                    className={`flex items-center gap-2.5 h-11 border rounded-[8px] px-3.5 transition-all duration-200 bg-white dark:bg-slate-800/80 ${
-                      emailFocused
-                        ? 'border-emerald-500 ring-2 ring-emerald-50 dark:ring-emerald-950'
-                        : 'border-gray-200 dark:border-slate-700'
-                    }`}
+                    className={`flex items-center gap-2.5 h-11 border rounded-[8px] px-3.5 transition-all duration-200 bg-white dark:bg-slate-800/80 ${emailFocused
+                      ? 'border-emerald-500 ring-2 ring-emerald-50 dark:ring-emerald-950'
+                      : 'border-gray-200 dark:border-slate-700'
+                      }`}
                   >
                     <Mail
                       size={17}
-                      className={`shrink-0 transition-colors ${
-                        emailFocused ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-slate-500'
-                      }`}
+                      className={`shrink-0 transition-colors ${emailFocused ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-slate-500'
+                        }`}
                     />
                     <input
                       type="email"
@@ -517,11 +515,10 @@ export default function ResetForm({ onSwitch, defaultToNewPasswordOnRecovery }: 
                     type="button"
                     onClick={handleResend}
                     disabled={!canResend || loading}
-                    className={`flex items-center justify-center gap-1.5 h-10 border rounded-[8px] transition-all duration-200 text-[12px] font-medium outfit-font shadow-sm ${
-                      canResend
-                        ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/60 cursor-pointer'
-                        : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 text-gray-400 dark:text-slate-500 cursor-not-allowed opacity-75'
-                    }`}
+                    className={`flex items-center justify-center gap-1.5 h-10 border rounded-[8px] transition-all duration-200 text-[12px] font-medium outfit-font shadow-sm ${canResend
+                      ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/60 cursor-pointer'
+                      : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 text-gray-400 dark:text-slate-500 cursor-not-allowed opacity-75'
+                      }`}
                   >
                     <RotateCcw size={13} className={loading ? 'animate-spin' : ''} />
                     <span>Resend Email</span>
@@ -637,7 +634,7 @@ export default function ResetForm({ onSwitch, defaultToNewPasswordOnRecovery }: 
                       <button
                         type="button"
                         onClick={() => onSwitch ? onSwitch('login') : (window.location.href = '/authentication')}
-                        className="inline-flex items-center gap-2 text-[13.5px] font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 transition-colors outfit-font"
+                        className="inline-flex items-center gap-2 text-[13.5px] font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 transition-colors outfit-font"
                       >
                         <ArrowLeft size={16} />
                         <span>Back to Login</span>
@@ -653,17 +650,15 @@ export default function ResetForm({ onSwitch, defaultToNewPasswordOnRecovery }: 
                         New Password
                       </label>
                       <div
-                        className={`relative flex items-center border rounded-[8px] px-3.5 h-11 transition-all duration-200 bg-white dark:bg-slate-800/80 ${
-                          newPassFocused
-                            ? 'border-emerald-500 ring-2 ring-emerald-50 dark:ring-emerald-950'
-                            : 'border-gray-200 dark:border-slate-700'
-                        }`}
+                        className={`relative flex items-center border rounded-[8px] px-3.5 h-11 transition-all duration-200 bg-white dark:bg-slate-800/80 ${newPassFocused
+                          ? 'border-emerald-500 ring-2 ring-emerald-50 dark:ring-emerald-950'
+                          : 'border-gray-200 dark:border-slate-700'
+                          }`}
                       >
                         <Lock
                           size={16}
-                          className={`shrink-0 transition-colors mr-2.5 ${
-                            newPassFocused ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'
-                          }`}
+                          className={`shrink-0 transition-colors mr-2.5 ${newPassFocused ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'
+                            }`}
                         />
                         <input
                           type={showPassword ? 'text' : 'password'}
@@ -695,9 +690,8 @@ export default function ResetForm({ onSwitch, defaultToNewPasswordOnRecovery }: 
                           {[1, 2, 3, 4].map(seg => (
                             <div
                               key={seg}
-                              className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-                                seg <= strength.score ? strength.barColor : 'bg-gray-100 dark:bg-slate-800'
-                              }`}
+                              className={`h-1 flex-1 rounded-full transition-all duration-300 ${seg <= strength.score ? strength.barColor : 'bg-gray-100 dark:bg-slate-800'
+                                }`}
                             />
                           ))}
                         </div>
@@ -710,17 +704,15 @@ export default function ResetForm({ onSwitch, defaultToNewPasswordOnRecovery }: 
                         Confirm New Password
                       </label>
                       <div
-                        className={`relative flex items-center border rounded-[8px] px-3.5 h-11 transition-all duration-200 bg-white dark:bg-slate-800/80 ${
-                          confirmPassFocused
-                            ? 'border-emerald-500 ring-2 ring-emerald-50 dark:ring-emerald-950'
-                            : 'border-gray-200 dark:border-slate-700'
-                        }`}
+                        className={`relative flex items-center border rounded-[8px] px-3.5 h-11 transition-all duration-200 bg-white dark:bg-slate-800/80 ${confirmPassFocused
+                          ? 'border-emerald-500 ring-2 ring-emerald-50 dark:ring-emerald-950'
+                          : 'border-gray-200 dark:border-slate-700'
+                          }`}
                       >
                         <Lock
                           size={16}
-                          className={`shrink-0 transition-colors mr-2.5 ${
-                            confirmPassFocused ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'
-                          }`}
+                          className={`shrink-0 transition-colors mr-2.5 ${confirmPassFocused ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'
+                            }`}
                         />
                         <input
                           type={showConfirmPassword ? 'text' : 'password'}
@@ -757,20 +749,18 @@ export default function ResetForm({ onSwitch, defaultToNewPasswordOnRecovery }: 
                         ].map((rule, idx) => (
                           <div key={idx} className="flex items-center gap-2">
                             <div
-                              className={`w-4 h-4 rounded-full flex items-center justify-center transition-colors duration-200 shrink-0 ${
-                                rule.valid
-                                  ? 'bg-emerald-600 text-white shadow-sm'
-                                  : 'bg-gray-100 dark:bg-slate-800 text-transparent border border-gray-300 dark:border-slate-600'
-                              }`}
+                              className={`w-4 h-4 rounded-full flex items-center justify-center transition-colors duration-200 shrink-0 ${rule.valid
+                                ? 'bg-emerald-600 text-white shadow-sm'
+                                : 'bg-gray-100 dark:bg-slate-800 text-transparent border border-gray-300 dark:border-slate-600'
+                                }`}
                             >
                               <Check className="w-2.5 h-2.5 stroke-[3]" />
                             </div>
                             <span
-                              className={`text-[12px] outfit-font transition-colors duration-200 ${
-                                rule.valid
-                                  ? 'text-slate-800 dark:text-slate-100 font-medium'
-                                  : 'text-gray-400 dark:text-gray-500'
-                              }`}
+                              className={`text-[12px] outfit-font transition-colors duration-200 ${rule.valid
+                                ? 'text-slate-800 dark:text-slate-100 font-medium'
+                                : 'text-gray-400 dark:text-gray-500'
+                                }`}
                             >
                               {rule.label}
                             </span>
@@ -786,20 +776,18 @@ export default function ResetForm({ onSwitch, defaultToNewPasswordOnRecovery }: 
                         ].map((rule, idx) => (
                           <div key={idx} className="flex items-center gap-2">
                             <div
-                              className={`w-4 h-4 rounded-full flex items-center justify-center transition-colors duration-200 shrink-0 ${
-                                rule.valid
-                                  ? 'bg-emerald-600 text-white shadow-sm'
-                                  : 'bg-gray-100 dark:bg-slate-800 text-transparent border border-gray-300 dark:border-slate-600'
-                              }`}
+                              className={`w-4 h-4 rounded-full flex items-center justify-center transition-colors duration-200 shrink-0 ${rule.valid
+                                ? 'bg-emerald-600 text-white shadow-sm'
+                                : 'bg-gray-100 dark:bg-slate-800 text-transparent border border-gray-300 dark:border-slate-600'
+                                }`}
                             >
                               <Check className="w-2.5 h-2.5 stroke-[3]" />
                             </div>
                             <span
-                              className={`text-[12px] outfit-font transition-colors duration-200 ${
-                                rule.valid
-                                  ? 'text-slate-800 dark:text-slate-100 font-medium'
-                                  : 'text-gray-400 dark:text-gray-500'
-                              }`}
+                              className={`text-[12px] outfit-font transition-colors duration-200 ${rule.valid
+                                ? 'text-slate-800 dark:text-slate-100 font-medium'
+                                : 'text-gray-400 dark:text-gray-500'
+                                }`}
                             >
                               {rule.label}
                             </span>
@@ -824,7 +812,7 @@ export default function ResetForm({ onSwitch, defaultToNewPasswordOnRecovery }: 
                       <button
                         type="button"
                         onClick={() => onSwitch ? onSwitch('login') : (window.location.href = '/authentication')}
-                        className="inline-flex items-center gap-2 text-[13.5px] font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 transition-colors outfit-font cursor-pointer"
+                        className="inline-flex items-center gap-2 text-[13.5px] font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 transition-colors outfit-font cursor-pointer"
                       >
                         <ArrowLeft size={16} />
                         <span>Back to Login</span>
